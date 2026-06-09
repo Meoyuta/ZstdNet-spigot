@@ -1,0 +1,32 @@
+dependencies {
+    implementation project(":core")
+    implementation "com.github.luben:zstd-jni:${zstd_jni_version}"
+    compileOnly "org.spigotmc:spigot-api:${spigot_api_version}"
+    compileOnly "io.netty:netty-all:4.1.118.Final"
+    testImplementation platform("org.junit:junit-bom:${junit_version}")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+processResources {
+    def props = [
+        version           : project.version,
+        name              : mod_name,
+        minecraft_version : minecraft_version,
+        plugin_api_version: plugin_api_version
+    ]
+    inputs.properties(props)
+    filesMatching("plugin.yml") {
+        expand(props)
+    }
+}
+
+jar {
+    dependsOn configurations.runtimeClasspath
+    archiveClassifier.set("")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${version}",
+  "name": "${mod_name}",
+  "description": "ZSTD network proxy client for Spigot ${minecraft_version} ZstdNet servers.",
+  "authors": ["Meoyuta"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "cn.tohsaka.factory.zstdnet26.fabric.ZstdNetFabricClient"
+    ]
+  },
+  "mixins": [
+    "zstdnet26.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${fabric_loader_version}",
+    "minecraft": "${minecraft_version}",
+    "architectury": ">=${architectury_api_version}",
+    "java": ">=${java_version}"
+  }
+}

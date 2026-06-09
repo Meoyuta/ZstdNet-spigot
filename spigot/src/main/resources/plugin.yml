@@ -1,0 +1,16 @@
+name: ${name}
+version: ${version}
+main: cn.tohsaka.factory.zstdnet26.spigot.ZstdNetPlugin
+api-version: '${plugin_api_version}'
+load: STARTUP
+author: Codex
+description: ZSTD network proxy for Spigot ${minecraft_version}.
+commands:
+  zstdnet:
+    description: Manage the ZstdNet proxy.
+    usage: /zstdnet <status|reload|start|stop|setup [publicPort]>
+    permission: zstdnet.admin
+permissions:
+  zstdnet.admin:
+    description: Allows managing ZstdNet.
+    default: op
