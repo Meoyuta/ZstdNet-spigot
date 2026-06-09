@@ -2,6 +2,8 @@
 
 ZstdNet is a same-port ZSTD network plugin with Fabric and NeoForge client mods.
 
+Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
+
 ## Build
 
 ```powershell
@@ -82,3 +84,9 @@ ViaVersion on the server is compatible with the Bukkit-side plugin path, but it
 does not remove the need for a ZstdNet client mod on clients that should use the
 compressed ZstdNet connection. This repository builds 1.21.11 and 26.1
 artifacts.
+
+## Acknowledgements
+
+Thanks to [wish131400/zstdnet](https://github.com/wish131400/zstdnet). This
+project was written with reference to its ZSTD network acceleration idea and
+overall workflow.
