@@ -9,11 +9,11 @@
   "environment": "client",
   "entrypoints": {
     "client": [
-      "cn.tohsaka.factory.zstdnet26.fabric.ZstdNetFabricClient"
+      "mys.zstdnet.reborn.fabric.ZstdNetFabricClient"
     ]
   },
   "mixins": [
-    "zstdnet26.mixins.json"
+    "zstdnet.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${fabric_loader_version}",

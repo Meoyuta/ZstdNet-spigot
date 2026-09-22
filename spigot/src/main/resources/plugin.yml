@@ -1,6 +1,6 @@
 name: ${name}
 version: ${version}
-main: cn.tohsaka.factory.zstdnet26.spigot.ZstdNetPlugin
+main: mys.zstdnet.reborn.spigot.ZstdNetPlugin
 api-version: '${plugin_api_version}'
 load: STARTUP
 author: Codex

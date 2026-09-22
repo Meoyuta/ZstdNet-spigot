@@ -32,8 +32,39 @@ The 1.21.11 and 26.1 `client` variant uses `neoforge/src/client-entry`.
 The current 1.21.1 local build requires the mapped Minecraft and NeoForge JARs
 in the Gradle cache; a fresh CI runner still needs dependency bootstrapping.
 
-Dictionary loading and transfer are implemented in the core. Training/import/export
-commands and the client download progress screen are not wired up yet.
+## Dictionaries (NeoForge 1.21.1)
+
+Install the server-client JAR on both the dedicated server and its clients.
+Operators (permission level 2) can use:
+
+```text
+/zstdnet dictionary train [seconds]
+/zstdnet dictionary status
+/zstdnet dictionary stop
+/zstdnet dictionary cancel
+/zstdnet dictionary export
+/zstdnet dictionary import <path>
+```
+
+Training collects live ZstdNet traffic for 600 seconds by default (range 1–86400).
+`stop` finishes collection and trains asynchronously; `cancel` discards the
+session. Status reports samples, remaining time, and the final result. Server
+shutdown stops collection and prevents unfinished training from publishing;
+an already-running native training call may finish in the background.
+
+The active dictionary is stored at `config/zstdnet/dictionary.zdict`. Export
+creates a snapshot under `config/zstdnet/exports` and prints a clickable,
+copyable absolute path. Import accepts an absolute path or a path relative to
+`config/zstdnet`, including spaces; invalid dictionaries preserve the current one.
+
+New connections automatically download the server dictionary with a percentage
+and byte-count screen. Clients ignore local dictionaries for negotiation and
+acknowledge receipt immediately. If the server has no dictionary, the connection
+uses ordinary ZSTD. Training/import changes apply to new connections; existing
+connections retain their negotiated dictionary until reconnecting.
+
+Commands and progress UI are currently provided only for NeoForge 1.21.1.
+All Java packages use the version-independent prefix `mys.zstdnet.reborn`.
 
 ## Spigot Behavior
 

@@ -86,7 +86,7 @@ processResources {
             mod_name: mod_name
         )
     }
-    filesMatching("zstdnet26.mixins.json") {
+    filesMatching("zstdnet.mixins.json") {
         expand(java_version: java_version)
         if (!clientMixinEnabled) {
             filter { line -> line.contains("Mixin\"") ? "" : line }

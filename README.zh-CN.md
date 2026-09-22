@@ -30,7 +30,36 @@ NeoForge 1.21.1 使用 `server-1211` 变体，共享客户端代码位于
 目前 1.21.1 本地构建依赖 Gradle 缓存中的映射 Minecraft 和 NeoForge JAR；
 全新的 CI 环境仍需补齐依赖初始化流程。
 
-字典加载和传输底层已实现；训练、导入、导出命令及客户端下载进度界面尚未接入。
+## 字典功能（NeoForge 1.21.1）
+
+专用服务端和客户端均安装双端 JAR。管理员（权限等级 2）可使用：
+
+```text
+/zstdnet dictionary train [秒数]
+/zstdnet dictionary status
+/zstdnet dictionary stop
+/zstdnet dictionary cancel
+/zstdnet dictionary export
+/zstdnet dictionary import <文件路径>
+```
+
+默认采集 600 秒（10 分钟），可设置 1–86400 秒。训练需要玩家通过
+ZstdNet 连接产生实际流量。`stop` 提前结束采集并异步训练，
+`cancel` 放弃本次训练。状态命令显示样本数、剩余时间和最终结果。
+关服立即停止采集，禁止未完成任务发布字典；已进入本地库的训练调用
+可能在后台完成，但不会覆盖字典。
+
+字典保存在 `config/zstdnet/dictionary.zdict`，启动时自动加载。
+导出在 `config/zstdnet/exports` 生成快照，并输出可点击复制的完整路径。
+导入接受绝对路径或相对于 `config/zstdnet` 的路径，支持空格。
+无效文件不会替换当前字典。
+
+新连接自动同步服务端字典，客户端显示下载百分比和字节数，收到后立即确认。
+客户端不使用本地字典决定连接参数；服务端无字典时使用普通 ZSTD。
+训练或导入的新字典对新连接生效，已有连接保留协商时的字典，重连后更新。
+
+本轮仅为 NeoForge 1.21.1 接入命令和界面。
+所有 Java 包名统一使用不含版本号的 `mys.zstdnet.reborn`。
 
 ## Spigot 行为
 

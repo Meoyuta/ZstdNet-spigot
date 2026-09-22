@@ -71,6 +71,9 @@ dependencies {
         )
         compileOnly "io.netty:netty-all:4.1.118.Final"
         compileOnly "net.neoforged:mergetool:2.0.0:api"
+        if (neoforgeVariant == "server-1211") {
+            compileOnly "com.mojang:brigadier:1.3.10"
+        }
         if (namedClientJarEnabled) {
             compileOnly files(namedClientJar)
         }
@@ -103,7 +106,7 @@ processResources {
             mod_name: mod_name
         )
     }
-    filesMatching("zstdnet26.mixins.json") {
+    filesMatching("zstdnet.mixins.json") {
         expand(java_version: java_version)
     }
 }
