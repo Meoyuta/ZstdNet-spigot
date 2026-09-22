@@ -10,9 +10,10 @@ ZstdNet 是一个同端口 ZSTD 网络插件，并提供 Fabric 和 NeoForge 客
 .\build.bat
 ```
 
-构建脚本会在需要时自动创建 `target` 目录，编译当前支持的两个 Minecraft 版本，并把所有发布 jar 复制到：
+构建脚本会在需要时自动创建 `target` 目录，编译当前支持的 Minecraft 版本，并把所有发布 jar 复制到：
 
 ```text
+target/ZstdNet-1.21.1-neoforge-server-client-0.1.0.jar
 target/ZstdNet-1.21.11-spigot-0.1.0.jar
 target/ZstdNet-1.21.11-fabric-0.1.0.jar
 target/ZstdNet-1.21.11-neoforge-0.1.0.jar
@@ -21,7 +22,15 @@ target/ZstdNet-26.1-fabric-0.1.0.jar
 target/ZstdNet-26.1-neoforge-0.1.0.jar
 ```
 
-1.21.11 产物使用 Java 21 字节码。26.1 产物使用 Java 25 字节码。
+1.21.1 和 1.21.11 产物使用 Java 21 字节码。26.1 产物使用 Java 25 字节码。
+
+NeoForge 1.21.1 使用 `server-1211` 变体，共享客户端代码位于
+`neoforge/src/client`，服务端及双端入口位于 `neoforge/src/mc1211`。
+1.21.11 和 26.1 的 `client` 变体使用 `neoforge/src/client-entry`。
+目前 1.21.1 本地构建依赖 Gradle 缓存中的映射 Minecraft 和 NeoForge JAR；
+全新的 CI 环境仍需补齐依赖初始化流程。
+
+字典加载和传输底层已实现；训练、导入、导出命令及客户端下载进度界面尚未接入。
 
 ## Spigot 行为
 

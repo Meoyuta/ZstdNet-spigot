@@ -1,6 +1,7 @@
 package cn.tohsaka.factory.zstdnet26.client;
 
 import cn.tohsaka.factory.zstdnet26.core.netty.ZstdFrameStats;
+import cn.tohsaka.factory.zstdnet26.core.netty.ZstdDictionarySession;
 import cn.tohsaka.factory.zstdnet26.core.netty.ZstdNettyPipeline;
 import cn.tohsaka.factory.zstdnet26.core.proxy.ProxyLogger;
 import io.netty.channel.ChannelPipeline;
@@ -44,7 +45,13 @@ public final class ZstdNetConnectionHooks {
             return;
         }
 
-        ZstdNettyPipeline.install(pipeline, pending.compressionLevel(), true, ZstdFrameStats.NONE);
+        ZstdNettyPipeline.install(
+            pipeline,
+            pending.compressionLevel(),
+            true,
+            ZstdFrameStats.NONE,
+            ZstdDictionarySession.client(ZstdNetClient::receiveServerDictionary, ZstdNetClient.dictionaryDownloadListener())
+        );
         ZstdNetClient.logger().info("installed ZstdNet pipeline for " + pending.host() + ":" + pending.port());
     }
 

@@ -1,18 +1,22 @@
 package cn.tohsaka.factory.zstdnet26.spigot;
 
 import cn.tohsaka.factory.zstdnet26.core.proxy.ProxyLogger;
-import cn.tohsaka.factory.zstdnet26.core.proxy.ZstdProxyConfig;
+import cn.tohsaka.factory.zstdnet26.core.ZstdNetConfig;
 import cn.tohsaka.factory.zstdnet26.core.stats.TrafficStats;
+import cn.tohsaka.factory.zstdnet26.core.dictionary.ZstdDictionaryStore;
+import cn.tohsaka.factory.zstdnet26.core.dictionary.ZstdDictionaryTrainer;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelHandlerContext;
 import org.bukkit.Bukkit;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -20,14 +24,23 @@ final class SamePortZstdInjector implements AutoCloseable {
     private static final String ACCEPT_HANDLER = "zstdnet-accept-injector";
     private static final String CONNECTION_HANDLER = "zstdnet-same-port-codec";
 
-    private final ZstdProxyConfig config;
+    private final ZstdNetConfig config;
     private final ProxyLogger logger;
+    private final ZstdDictionaryStore dictionaryStore;
+    private final ZstdDictionaryTrainer dictionaryTrainer;
     private final TrafficStats stats = new TrafficStats();
     private final List<Channel> injectedServerChannels = new ArrayList<>();
 
-    SamePortZstdInjector(ZstdProxyConfig config, ProxyLogger logger) {
+    SamePortZstdInjector(
+        ZstdNetConfig config,
+        ProxyLogger logger,
+        ZstdDictionaryStore dictionaryStore,
+        ZstdDictionaryTrainer dictionaryTrainer
+    ) {
         this.config = Objects.requireNonNull(config, "config");
         this.logger = Objects.requireNonNull(logger, "logger");
+        this.dictionaryStore = dictionaryStore;
+        this.dictionaryTrainer = dictionaryTrainer;
     }
 
     void inject() throws Exception {
@@ -51,7 +64,7 @@ final class SamePortZstdInjector implements AutoCloseable {
         return stats.snapshot();
     }
 
-    ZstdProxyConfig config() {
+    ZstdNetConfig config() {
         return config;
     }
 
@@ -74,83 +87,91 @@ final class SamePortZstdInjector implements AutoCloseable {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             if (msg instanceof Channel child && child.pipeline().get(CONNECTION_HANDLER) == null) {
-                child.pipeline().addFirst(CONNECTION_HANDLER, new SamePortZstdHandler(config, stats, logger));
+                child.pipeline().addFirst(CONNECTION_HANDLER, new SamePortZstdHandler(config, stats, logger, dictionaryStore, dictionaryTrainer));
             }
             super.channelRead(ctx, msg);
         }
     }
 
     private static List<Channel> findServerChannels() throws Exception {
-        Object minecraftServer = Bukkit.getServer().getClass().getMethod("getServer").invoke(Bukkit.getServer());
-        Object serverConnection = findServerConnection(minecraftServer);
-        if (serverConnection == null) {
-            return List.of();
-        }
-        return findChannels(serverConnection);
-    }
-
-    private static Object findServerConnection(Object minecraftServer) throws Exception {
-        for (Method method : minecraftServer.getClass().getMethods()) {
-            try {
-                if (method.getParameterCount() == 0 && method.getReturnType().getSimpleName().toLowerCase(java.util.Locale.ROOT).contains("connection")) {
-                    Object value = method.invoke(minecraftServer);
-                    if (value != null && !findChannels(value).isEmpty()) {
-                        return value;
+        try {
+            Object server = (Object) ServerAccess.SERVER.invokeExact((Object) Bukkit.getServer());
+            Object listener = (Object) ServerAccess.CONNECTION.invokeExact(server);
+            List<?> futures = (List<?>) ServerAccess.CHANNELS.invokeExact(listener);
+            List<Channel> channels = new ArrayList<>();
+            synchronized (futures) {
+                for (Object value : futures) {
+                    if (value instanceof ChannelFuture future) {
+                        channels.add(future.channel());
                     }
                 }
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+            return channels;
+        } catch (Throwable e) {
+            throw new IllegalStateException("Could not access Minecraft listener channels", e);
+        }
+    }
+
+    // Resolve once, lazily at startup. Connections only use the Netty handlers above.
+    private static final class ServerAccess {
+        private static final MethodHandle SERVER;
+        private static final MethodHandle CONNECTION;
+        private static final MethodHandle CHANNELS;
+
+        static {
+            try {
+                Method serverMethod = Bukkit.getServer().getClass().getMethod("getServer");
+                SERVER = unreflect(serverMethod).asType(MethodType.methodType(Object.class, Object.class));
+                Class<?> serverType = serverMethod.getReturnType();
+                Method connectionMethod = connectionMethod(serverType);
+                CONNECTION = unreflect(connectionMethod).asType(MethodType.methodType(Object.class, Object.class));
+                Class<?> listenerType = connectionMethod.getReturnType();
+                Field channels = channelsField(listenerType);
+                CHANNELS = MethodHandles.privateLookupIn(channels.getDeclaringClass(), MethodHandles.lookup())
+                    .unreflectGetter(channels).asType(MethodType.methodType(List.class, Object.class));
+            } catch (ReflectiveOperationException e) {
+                throw new ExceptionInInitializerError(e);
             }
         }
-        for (Field field : allFields(minecraftServer.getClass())) {
+
+        private static MethodHandle unreflect(Method method) throws IllegalAccessException {
+            return MethodHandles.privateLookupIn(method.getDeclaringClass(), MethodHandles.lookup())
+                .unreflect(method);
+        }
+
+        private static Method connectionMethod(Class<?> type) throws NoSuchMethodException {
             try {
-                field.setAccessible(true);
-                Object value = field.get(minecraftServer);
-                if (value != null && value.getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT).contains("connection")
-                    && !findChannels(value).isEmpty()) {
-                    return value;
+                return type.getMethod("getConnection");
+            } catch (NoSuchMethodException ignored) {
+                // Older Spigot mappings rename members but retain the listener class name.
+                for (Method method : type.getMethods()) {
+                    String name = method.getReturnType().getSimpleName();
+                    if (method.getParameterCount() == 0
+                        && (name.equals("ServerConnectionListener") || name.equals("ServerConnection"))) {
+                        return method;
+                    }
                 }
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                throw new NoSuchMethodException(type.getName() + "#getConnection");
             }
         }
-        return null;
-    }
 
-    private static List<Channel> findChannels(Object serverConnection) throws Exception {
-        List<Channel> channels = new ArrayList<>();
-        for (Field field : allFields(serverConnection.getClass())) {
-            try {
-                field.setAccessible(true);
-                Object value = field.get(serverConnection);
-                collectChannels(value, channels);
-            } catch (ReflectiveOperationException | RuntimeException ignored) {
+        private static Field channelsField(Class<?> type) throws NoSuchFieldException {
+            for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+                try {
+                    Field field = current.getDeclaredField("channels");
+                    if (List.class.isAssignableFrom(field.getType())) {
+                        return field;
+                    }
+                } catch (NoSuchFieldException ignored) {
+                }
+                for (Field field : current.getDeclaredFields()) {
+                    if (List.class.isAssignableFrom(field.getType())
+                        && field.getGenericType().getTypeName().contains("io.netty.channel.ChannelFuture")) {
+                        return field;
+                    }
+                }
             }
+            throw new NoSuchFieldException(type.getName() + "#channels");
         }
-        return channels;
-    }
-
-    private static void collectChannels(Object value, List<Channel> channels) {
-        if (value instanceof Channel channel) {
-            channels.add(channel);
-            return;
-        }
-        if (value instanceof ChannelFuture future) {
-            channels.add(future.channel());
-            return;
-        }
-        if (value instanceof Collection<?> collection) {
-            for (Object item : collection) {
-                collectChannels(item, channels);
-            }
-        }
-    }
-
-    private static List<Field> allFields(Class<?> type) {
-        List<Field> fields = new ArrayList<>();
-        Class<?> current = type;
-        while (current != null && current != Object.class) {
-            fields.addAll(List.of(current.getDeclaredFields()));
-            current = current.getSuperclass();
-        }
-        return fields;
     }
 }

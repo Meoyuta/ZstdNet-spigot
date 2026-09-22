@@ -10,10 +10,11 @@ Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 .\build.bat
 ```
 
-The build script creates `target` when needed, builds both supported Minecraft
+The build script creates `target` when needed, builds the supported Minecraft
 versions, and copies all release jars to:
 
 ```text
+target/ZstdNet-1.21.1-neoforge-server-client-0.1.0.jar
 target/ZstdNet-1.21.11-spigot-0.1.0.jar
 target/ZstdNet-1.21.11-fabric-0.1.0.jar
 target/ZstdNet-1.21.11-neoforge-0.1.0.jar
@@ -22,8 +23,17 @@ target/ZstdNet-26.1-fabric-0.1.0.jar
 target/ZstdNet-26.1-neoforge-0.1.0.jar
 ```
 
-The 1.21.11 artifacts target Java 21 bytecode. The 26.1 artifacts target Java
+The 1.21.1 and 1.21.11 artifacts target Java 21 bytecode. The 26.1 artifacts target Java
 25 bytecode.
+
+NeoForge 1.21.1 uses the `server-1211` variant with shared client sources in
+`neoforge/src/client` and server/client entry sources in `neoforge/src/mc1211`.
+The 1.21.11 and 26.1 `client` variant uses `neoforge/src/client-entry`.
+The current 1.21.1 local build requires the mapped Minecraft and NeoForge JARs
+in the Gradle cache; a fresh CI runner still needs dependency bootstrapping.
+
+Dictionary loading and transfer are implemented in the core. Training/import/export
+commands and the client download progress screen are not wired up yet.
 
 ## Spigot Behavior
 

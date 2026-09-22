@@ -1,7 +1,9 @@
 package cn.tohsaka.factory.zstdnet26.spigot;
 
-import cn.tohsaka.factory.zstdnet26.core.proxy.ZstdProxyConfig;
+import cn.tohsaka.factory.zstdnet26.core.ZstdNetConfig;
 import cn.tohsaka.factory.zstdnet26.core.stats.TrafficStats;
+import cn.tohsaka.factory.zstdnet26.core.dictionary.ZstdDictionaryStore;
+import cn.tohsaka.factory.zstdnet26.core.dictionary.ZstdDictionaryTrainer;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -11,12 +13,20 @@ import java.nio.file.Path;
 
 public final class ZstdNetPlugin extends JavaPlugin {
     private SamePortZstdInjector injector;
-    private ZstdProxyConfig activeConfig;
+    private ZstdNetConfig activeConfig;
     private ServerPortSetup portSetup;
+    private ZstdDictionaryStore dictionaryStore;
+    private ZstdDictionaryTrainer dictionaryTrainer;
 
     @Override
     public void onEnable() {
         portSetup = new ServerPortSetup(this);
+        dictionaryStore = new ZstdDictionaryStore(
+            getDataFolder().toPath().resolve("dictionary.zdict"),
+            new BukkitProxyLogger(getLogger())
+        );
+        dictionaryStore.load();
+        dictionaryTrainer = new ZstdDictionaryTrainer(dictionaryStore, new BukkitProxyLogger(getLogger()));
 
         PluginCommand command = getCommand("zstdnet");
         if (command != null) {
@@ -32,6 +42,10 @@ public final class ZstdNetPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         stopProxy();
+        if (dictionaryTrainer != null) {
+            dictionaryTrainer.close();
+            dictionaryTrainer = null;
+        }
     }
 
     File getConfigFile() {
@@ -54,9 +68,14 @@ public final class ZstdNetPlugin extends JavaPlugin {
             return true;
         }
         reloadConfig();
-        ZstdProxyConfig config = PluginProxyConfig.loadSamePort(getConfig(), currentServerPort());
+        ZstdNetConfig config = PluginProxyConfig.loadSamePort(getConfig(), currentServerPort());
         try {
-            SamePortZstdInjector next = new SamePortZstdInjector(config, new BukkitProxyLogger(getLogger()));
+            SamePortZstdInjector next = new SamePortZstdInjector(
+                config,
+                new BukkitProxyLogger(getLogger()),
+                dictionaryStore,
+                dictionaryTrainer
+            );
             next.inject();
             injector = next;
             activeConfig = config;
@@ -96,11 +115,11 @@ public final class ZstdNetPlugin extends JavaPlugin {
         return portSetup == null ? null : portSetup.serverPropertiesPath();
     }
 
-    ZstdProxyConfig configuredConfig() {
+    ZstdNetConfig configuredConfig() {
         return PluginProxyConfig.loadSamePort(getConfig(), currentServerPort());
     }
 
-    ZstdProxyConfig activeConfig() {
+    ZstdNetConfig activeConfig() {
         return activeConfig;
     }
 
@@ -129,16 +148,7 @@ public final class ZstdNetPlugin extends JavaPlugin {
         config.set("target.host", "same-port");
         config.set("target.port", serverPort);
         config.set("compression-level", config.getInt("compression-level", 9));
-        config.set("flush-interval-ms", config.getLong("flush-interval-ms", 2L));
-        config.set("stats-interval-seconds", config.getLong("stats-interval-seconds", 0L));
         config.set("raw-login-message", config.getString("raw-login-message", "This server requires the ZstdNet client mod."));
-        config.set("flood-guard.max-connections-per-ip", config.getInt("flood-guard.max-connections-per-ip", 9999));
-        config.set("flood-guard.max-requests-per-window", config.getInt("flood-guard.max-requests-per-window", 50));
-        config.set("flood-guard.request-window-seconds", config.getInt("flood-guard.request-window-seconds", 10));
-        config.set("flood-guard.ban-duration-seconds", config.getInt("flood-guard.ban-duration-seconds", 60));
-        config.set("rate-limit.max-rate-per-connection-bps", config.getLong("rate-limit.max-rate-per-connection-bps", 0L));
-        config.set("rate-limit.max-rate-global-bps", config.getLong("rate-limit.max-rate-global-bps", 0L));
-        config.set("rate-limit.burst-bytes", config.getInt("rate-limit.burst-bytes", 262144));
         config.set("setup.pending-restart", false);
         config.set("setup.original-server-port", serverPort);
         saveConfig();

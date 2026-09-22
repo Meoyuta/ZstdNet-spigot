@@ -2,13 +2,17 @@ package cn.tohsaka.factory.zstdnet26.spigot;
 
 import cn.tohsaka.factory.zstdnet26.core.netty.ZstdFrameStats;
 import cn.tohsaka.factory.zstdnet26.core.netty.MinecraftCompressionDisabler;
+import cn.tohsaka.factory.zstdnet26.core.netty.ZstdDictionarySession;
 import cn.tohsaka.factory.zstdnet26.core.netty.ZstdNettyPipeline;
+import cn.tohsaka.factory.zstdnet26.core.netty.ZstdStreamHeader;
+import cn.tohsaka.factory.zstdnet26.core.dictionary.ZstdDictionaryStore;
+import cn.tohsaka.factory.zstdnet26.core.dictionary.ZstdDictionaryTrainer;
 import cn.tohsaka.factory.zstdnet26.core.protocol.ByteArrayOps;
 import cn.tohsaka.factory.zstdnet26.core.protocol.HandshakePacket;
 import cn.tohsaka.factory.zstdnet26.core.protocol.VarIntCodec;
 import cn.tohsaka.factory.zstdnet26.core.protocol.ZstdFrameCodec;
 import cn.tohsaka.factory.zstdnet26.core.proxy.ProxyLogger;
-import cn.tohsaka.factory.zstdnet26.core.proxy.ZstdProxyConfig;
+import cn.tohsaka.factory.zstdnet26.core.ZstdNetConfig;
 import cn.tohsaka.factory.zstdnet26.core.stats.TrafficStats;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -28,20 +32,35 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
         ZSTD
     }
 
-    private final ZstdProxyConfig config;
+    private final ZstdNetConfig config;
     private final TrafficStats stats;
     private final ProxyLogger logger;
+    private final ZstdDictionaryStore dictionaryStore;
+    private final ZstdDictionaryTrainer dictionaryTrainer;
     private Mode mode = Mode.UNDECIDED;
+    private boolean streamHeaderRead;
 
-    SamePortZstdHandler(ZstdProxyConfig config, TrafficStats stats, ProxyLogger logger) {
+    SamePortZstdHandler(
+        ZstdNetConfig config,
+        TrafficStats stats,
+        ProxyLogger logger,
+        ZstdDictionaryStore dictionaryStore,
+        ZstdDictionaryTrainer dictionaryTrainer
+    ) {
         this.config = config;
         this.stats = stats;
         this.logger = logger;
+        this.dictionaryStore = dictionaryStore;
+        this.dictionaryTrainer = dictionaryTrainer;
     }
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
-        if (mode != Mode.UNDECIDED) {
+        if (mode == Mode.ZSTD) {
+            initializeZstdPipeline(ctx, in, out);
+            return;
+        }
+        if (mode == Mode.RAW) {
             out.add(in.readRetainedSlice(in.readableBytes()));
             return;
         }
@@ -52,14 +71,7 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
         if (startsWithMagic(in)) {
             in.skipBytes(ZstdFrameCodec.MAGIC.length);
             mode = Mode.ZSTD;
-            countConnection(ctx);
-            ZstdNettyPipeline.install(ctx.pipeline(), config.compressionLevel(), false, serverStats());
-            MinecraftCompressionDisabler.install(ctx.pipeline());
-            logger.info("accepted ZstdNet client connection from " + ctx.channel().remoteAddress());
-            if (in.isReadable()) {
-                out.add(in.readRetainedSlice(in.readableBytes()));
-            }
-            ctx.pipeline().remove(this);
+            initializeZstdPipeline(ctx, in, out);
             return;
         }
 
@@ -76,6 +88,29 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
         }
 
         mode = Mode.RAW;
+        if (in.isReadable()) {
+            out.add(in.readRetainedSlice(in.readableBytes()));
+        }
+        ctx.pipeline().remove(this);
+    }
+
+    private void initializeZstdPipeline(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+        if (!streamHeaderRead) {
+            if (!ZstdStreamHeader.read(in)) {
+                return;
+            }
+            streamHeaderRead = true;
+            countConnection(ctx);
+            ZstdNettyPipeline.install(
+                ctx.pipeline(),
+                config.compressionLevel(),
+                false,
+                serverStats(),
+                ZstdDictionarySession.server(dictionaryStore == null ? null : dictionaryStore.dictionary())
+            );
+            MinecraftCompressionDisabler.install(ctx.pipeline());
+            logger.info("accepted ZstdNet client connection from " + ctx.channel().remoteAddress());
+        }
         if (in.isReadable()) {
             out.add(in.readRetainedSlice(in.readableBytes()));
         }
@@ -104,6 +139,20 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
             public void outbound(long rawBytes, long wireBytes) {
                 stats.addRawDown(rawBytes);
                 stats.addWireDown(wireBytes);
+            }
+
+            @Override
+            public void inboundSample(byte[] raw) {
+                if (dictionaryTrainer != null) {
+                    dictionaryTrainer.capture(raw);
+                }
+            }
+
+            @Override
+            public void outboundSample(byte[] raw) {
+                if (dictionaryTrainer != null) {
+                    dictionaryTrainer.capture(raw);
+                }
             }
         };
     }

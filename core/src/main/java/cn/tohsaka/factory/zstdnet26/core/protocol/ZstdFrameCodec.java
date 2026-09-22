@@ -1,6 +1,7 @@
 package cn.tohsaka.factory.zstdnet26.core.protocol;
 
 import com.github.luben.zstd.Zstd;
+import cn.tohsaka.factory.zstdnet26.core.dictionary.ZstdDictionary;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -14,7 +15,11 @@ public final class ZstdFrameCodec {
     }
 
     public static byte[] compressFrame(byte[] raw, int level) throws IOException {
-        byte[] compressed = Zstd.compress(raw, level);
+        return compressFrame(raw, level, null);
+    }
+
+    public static byte[] compressFrame(byte[] raw, int level, ZstdDictionary dictionary) throws IOException {
+        byte[] compressed = dictionary == null ? Zstd.compress(raw, level) : dictionary.compress(raw, level);
         boolean storeRaw = compressed.length >= raw.length;
         ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(raw.length, compressed.length) + 10);
         out.write(VarIntCodec.encode(raw.length));
@@ -22,27 +27,43 @@ public final class ZstdFrameCodec {
             out.write(VarIntCodec.encode(0));
             out.write(raw);
         } else {
-            out.write(VarIntCodec.encode(compressed.length));
+            out.write(VarIntCodec.encode((compressed.length << 1) | (dictionary == null ? 0 : 1)));
             out.write(compressed);
         }
         return out.toByteArray();
     }
 
     public static byte[] readFrame(InputStream in) throws IOException {
+        return readFrame(in, null);
+    }
+
+    public static byte[] readFrame(InputStream in, ZstdDictionary dictionary) throws IOException {
         int rawLength = VarIntCodec.read(in);
-        int storedLength = VarIntCodec.read(in);
-        if (rawLength < 0 || rawLength > MAX_FRAME_BYTES || storedLength < 0 || storedLength > MAX_FRAME_BYTES) {
+        int storedTag = VarIntCodec.read(in);
+        if (rawLength <= 0 || rawLength > MAX_FRAME_BYTES || storedTag < 0 || storedTag > (MAX_FRAME_BYTES << 1) + 1) {
             throw new IOException("invalid zstd frame length");
         }
-        if (storedLength == 0) {
+        if (storedTag == 0) {
             return PacketIo.readFully(in, rawLength);
         }
+        boolean usesDictionary = (storedTag & 1) == 1;
+        int storedLength = storedTag >>> 1;
+        if (storedLength <= 0) {
+            throw new IOException("invalid zstd frame payload length");
+        }
         byte[] compressed = PacketIo.readFully(in, storedLength);
-        return decompressFrame(compressed, rawLength);
+        if (usesDictionary && dictionary == null) {
+            throw new IOException("received dictionary-compressed ZstdNet frame before dictionary activation");
+        }
+        return decompressFrame(compressed, rawLength, usesDictionary ? dictionary : null);
     }
 
     public static byte[] decompressFrame(byte[] compressed, int rawLength) throws IOException {
-        byte[] raw = Zstd.decompress(compressed, rawLength);
+        return decompressFrame(compressed, rawLength, null);
+    }
+
+    public static byte[] decompressFrame(byte[] compressed, int rawLength, ZstdDictionary dictionary) throws IOException {
+        byte[] raw = dictionary == null ? Zstd.decompress(compressed, rawLength) : dictionary.decompress(compressed, rawLength);
         if (raw.length != rawLength) {
             throw new IOException("zstd frame length mismatch");
         }

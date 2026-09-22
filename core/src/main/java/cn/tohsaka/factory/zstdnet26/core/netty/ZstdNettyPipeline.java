@@ -23,11 +23,21 @@ public final class ZstdNettyPipeline {
     }
 
     public static void install(ChannelPipeline pipeline, int level, boolean sendMagic, ZstdFrameStats stats) {
+        install(pipeline, level, sendMagic, stats, ZstdDictionarySession.withoutDictionary());
+    }
+
+    public static void install(
+        ChannelPipeline pipeline,
+        int level,
+        boolean sendMagic,
+        ZstdFrameStats stats,
+        ZstdDictionarySession dictionarySession
+    ) {
         if (pipeline.get(INBOUND_HANDLER) == null) {
-            addInbound(pipeline, new ZstdNettyDecoder(stats));
+            addInbound(pipeline, new ZstdNettyDecoder(stats, dictionarySession));
         }
         if (pipeline.get(OUTBOUND_HANDLER) == null) {
-            addOutbound(pipeline, new ZstdNettyEncoder(level, sendMagic, stats));
+            addOutbound(pipeline, new ZstdNettyEncoder(level, sendMagic, stats, dictionarySession));
         }
         if (pipeline.get(CONTROL_HANDLER) == null) {
             if (pipeline.get(PACKET_HANDLER) != null) {

@@ -1,6 +1,6 @@
 package cn.tohsaka.factory.zstdnet26.spigot;
 
-import cn.tohsaka.factory.zstdnet26.core.proxy.ZstdProxyConfig;
+import cn.tohsaka.factory.zstdnet26.core.ZstdNetConfig;
 import cn.tohsaka.factory.zstdnet26.core.stats.TrafficStats;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
@@ -82,11 +82,11 @@ final class ZstdNetCommand implements CommandExecutor, TabCompleter {
         if (plugin.isSetupPendingRestart()) {
             sender.sendMessage(ChatColor.YELLOW + "Setup pending restart: restart the server before starting the proxy.");
         }
-        ZstdProxyConfig config = plugin.activeConfig();
+        ZstdNetConfig config = plugin.activeConfig();
         if (config != null) {
             sender.sendMessage(ChatColor.GRAY + "Listen: " + config.listen() + " -> target: " + config.target());
         } else {
-            ZstdProxyConfig configured = plugin.configuredConfig();
+            ZstdNetConfig configured = plugin.configuredConfig();
             sender.sendMessage(ChatColor.GRAY + "Configured: " + configured.listen() + " -> target: " + configured.target());
         }
         int serverPort = plugin.currentServerPort();

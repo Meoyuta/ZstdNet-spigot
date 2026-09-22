@@ -14,4 +14,10 @@ public interface ZstdFrameStats {
     void inbound(long rawBytes, long wireBytes);
 
     void outbound(long rawBytes, long wireBytes);
+
+    default void inboundSample(byte[] raw) {
+    }
+
+    default void outboundSample(byte[] raw) {
+    }
 }

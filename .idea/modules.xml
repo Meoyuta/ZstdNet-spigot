@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ZstdNet.iml" filepath="$PROJECT_DIR$/.idea/modules/ZstdNet.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/fabric/ZstdNet.fabric.main.iml" filepath="$PROJECT_DIR$/.idea/modules/fabric/ZstdNet.fabric.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/fabric/ZstdNet.fabric.test.iml" filepath="$PROJECT_DIR$/.idea/modules/fabric/ZstdNet.fabric.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/neoforge/ZstdNet.neoforge.main.iml" filepath="$PROJECT_DIR$/.idea/modules/neoforge/ZstdNet.neoforge.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/neoforge/ZstdNet.neoforge.test.iml" filepath="$PROJECT_DIR$/.idea/modules/neoforge/ZstdNet.neoforge.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/spigot/ZstdNet.spigot.main.iml" filepath="$PROJECT_DIR$/.idea/modules/spigot/ZstdNet.spigot.main.iml" />
+    </modules>
+  </component>
+</project>
