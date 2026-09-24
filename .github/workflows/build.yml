@@ -45,9 +45,51 @@ jobs:
         shell: cmd
         run: build.bat
 
-      - name: Upload release jars
-        uses: actions/upload-artifact@v4
+      - name: Upload 1.21.1 NeoForge server-client jar
+        uses: actions/upload-artifact@v7
         with:
-          name: zstdnet-jars
-          path: target/*.jar
+          path: target/ZstdNet-1.21.1-neoforge-server-client-*.jar
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload 1.21.11 Spigot jar
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/ZstdNet-1.21.11-spigot-*.jar
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload 1.21.11 Fabric client jar
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/ZstdNet-1.21.11-fabric-*.jar
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload 1.21.11 NeoForge client jar
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/ZstdNet-1.21.11-neoforge-*.jar
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload 26.1 Spigot jar
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/ZstdNet-26.1-spigot-*.jar
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload 26.1 Fabric client jar
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/ZstdNet-26.1-fabric-*.jar
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload 26.1 NeoForge client jar
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/ZstdNet-26.1-neoforge-*.jar
+          archive: false
           if-no-files-found: error
