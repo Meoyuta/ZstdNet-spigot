@@ -60,7 +60,8 @@ call "%ROOT%\gradlew.bat" :neoforge:clean :neoforge:build ^
     -Pneoforge_version=%NEOFORGE_VERSION% ^
     -Pneoforge_fml_loader_version=%NEOFORGE_FML_LOADER_VERSION% ^
     -Pneoforge_variant=server-1211 ^
-    -Pclient_loom_enabled=false ^
+    -Pclient_loom_enabled=true ^
+    -Pfabric_loom_enabled=false ^
     -Pnamed_client_jar_enabled=false
 if errorlevel 1 (
     echo NeoForge server-client build failed for Minecraft %MC_VERSION%.

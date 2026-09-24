@@ -1,6 +1,6 @@
 def clientMixinEnabled = (findProperty("client_mixin_enabled") ?: "true").toString().toBoolean()
 def clientLoomEnabled = (findProperty("client_loom_enabled") ?: clientMixinEnabled.toString()).toString().toBoolean()
-def fabricLoomEnabled = clientLoomEnabled && !(findProperty("skip_fabric_loom") ?: "false").toString().toBoolean()
+def fabricLoomEnabled = (findProperty("fabric_loom_enabled") ?: clientLoomEnabled.toString()).toString().toBoolean()
 def namedClientJarEnabled = (findProperty("named_client_jar_enabled") ?: "false").toString().toBoolean()
 def minecraftClientUrl = (findProperty("minecraft_client_url") ?: "").toString()
 def namedClientJar = project.layout.buildDirectory.file("minecraft-client/${minecraft_version}.jar")
