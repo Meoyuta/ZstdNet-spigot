@@ -1,6 +1,6 @@
 package mys.zstdnet.reborn.core.dictionary;
 
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import com.github.luben.zstd.Zstd;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -13,9 +13,11 @@ import java.util.concurrent.TimeUnit;
 
 public final class ZstdDictionaryTrainer implements AutoCloseable {
     public static final Duration DEFAULT_DURATION = Duration.ofMinutes(10);
+    public static final int DICTIONARY_BYTES = 128 * 1024;
+    public static final int SAMPLE_BYTES = DICTIONARY_BYTES * 128;
     private final Object lock = new Object();
     private final ZstdDictionaryStore store;
-    private final ProxyLogger logger;
+    private final ZstdNetLogger logger;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(task -> {
         Thread thread = new Thread(task, "zstdnet-dictionary-training");
         thread.setDaemon(true);
@@ -23,9 +25,10 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
     });
     private Session session;
     private boolean closed;
+    private boolean shuttingDown;
     private String result = "idle";
 
-    public ZstdDictionaryTrainer(ZstdDictionaryStore store, ProxyLogger logger) {
+    public ZstdDictionaryTrainer(ZstdDictionaryStore store, ZstdNetLogger logger) {
         this.store = store;
         this.logger = logger;
     }
@@ -34,19 +37,19 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
         Duration selected = duration == null ? DEFAULT_DURATION : duration;
         if (selected.isZero() || selected.isNegative() || selected.compareTo(Duration.ofDays(1)) > 0) return false;
         synchronized (lock) {
-            if (closed || session != null) return false;
+            if (closed || shuttingDown || session != null) return false;
             Session next = new Session(System.currentTimeMillis() + selected.toMillis(), compressionLevel);
             session = next;
             result = "collecting";
             next.task = executor.schedule(() -> finish(next), selected.toMillis(), TimeUnit.MILLISECONDS);
-            logger.info("Dictionary training started for " + selected.toSeconds() + " seconds");
+            logger.debug("Dictionary training started for " + selected.toSeconds() + " seconds");
             return true;
         }
     }
 
     public boolean stopAndFinalize() {
         synchronized (lock) {
-            if (closed || session == null || session.finalizing) return false;
+            if (closed || shuttingDown || session == null || session.finalizing) return false;
             Session current = session;
             current.task.cancel(false);
             current.finalizing = true;
@@ -58,11 +61,12 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
     public void capture(byte[] raw) {
         if (raw == null || raw.length == 0) return;
         synchronized (lock) {
-            if (closed || session == null || session.finalizing || session.samples.size() >= 8192) return;
-            int length = Math.min(raw.length, Math.min(64 * 1024, 32 * 1024 * 1024 - session.totalBytes));
+            if (closed || shuttingDown || session == null || session.finalizing) return;
+            int length = Math.min(raw.length, Math.min(4 * 1024, SAMPLE_BYTES - session.totalBytes));
             if (length <= 0) return;
             session.samples.add(Arrays.copyOf(raw, length));
             session.totalBytes += length;
+            if (session.totalBytes >= SAMPLE_BYTES) stopAndFinalize();
         }
     }
 
@@ -93,6 +97,37 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
         }
     }
 
+    // Server shutdown waits for the existing training task instead of cancelling publication.
+    public void finishAndClose() {
+        synchronized (lock) {
+            if (closed) return;
+            shuttingDown = true;
+            if (session != null && !session.finalizing) {
+                Session current = session;
+                current.task.cancel(false);
+                current.finalizing = true;
+                logger.debug("Dictionary shutdown: collection stopped at " + current.totalBytes
+                    + "/" + SAMPLE_BYTES + " bytes, " + current.samples.size() + " samples");
+                executor.execute(() -> train(current));
+            }
+            executor.shutdown();
+        }
+        boolean interrupted = false;
+        for (;;) {
+            try {
+                if (executor.awaitTermination(5, TimeUnit.SECONDS)) break;
+                logger.debug("Dictionary shutdown: training or saving is still in progress...");
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        synchronized (lock) {
+            closed = true;
+            logger.debug("Dictionary shutdown complete: " + result);
+        }
+        if (interrupted) Thread.currentThread().interrupt();
+    }
+
     private void finish(Session expected) {
         synchronized (lock) {
             if (closed || session != expected || expected.finalizing) return;
@@ -106,8 +141,10 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
             if (expected.samples.size() <= 10 || expected.totalBytes < 4096) {
                 throw new IllegalStateException("not enough traffic samples; connect players and try again");
             }
-            int size = Math.max(4096, Math.min(ZstdDictionary.MAX_BYTES, expected.totalBytes / 100));
-            byte[] buffer = new byte[size];
+            logger.debug("Dictionary training: " + expected.samples.size() + " samples, "
+                + expected.totalBytes + "/" + SAMPLE_BYTES + " bytes; target dictionary "
+                + DICTIONARY_BYTES + " bytes");
+            byte[] buffer = new byte[DICTIONARY_BYTES];
             long trained = Zstd.trainFromBuffer(expected.samples.toArray(byte[][]::new), buffer, false, expected.level);
             if (Zstd.isError(trained) || trained <= 0 || trained > buffer.length) {
                 throw new IllegalStateException(Zstd.getErrorName(trained));
@@ -115,10 +152,12 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
             synchronized (lock) {
                 // Native training cannot be interrupted safely. Cancel its publication on stop/import.
                 if (closed || session != expected) return;
+                logger.debug("Dictionary training complete; validating and saving " + trained
+                    + " bytes to " + store.dictionaryPath());
                 ZstdDictionary dictionary = store.save(Arrays.copyOf(buffer, (int) trained));
                 result = "saved dictionary " + Long.toUnsignedString(dictionary.id());
                 session = null;
-                logger.info(result + "; new connections will synchronize it");
+                logger.debug(result + "; new connections will synchronize it");
             }
         } catch (Exception e) {
             synchronized (lock) {

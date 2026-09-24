@@ -14,7 +14,7 @@ The build script creates `target` when needed, builds the supported Minecraft
 versions, and copies all release jars to:
 
 ```text
-target/ZstdNet-1.21.1-neoforge-server-client-0.1.0.jar
+target/ZstdNet-1.21.1-neoforge-server-client-1.0.1-prerelease.jar
 target/ZstdNet-1.21.11-spigot-0.1.0.jar
 target/ZstdNet-1.21.11-fabric-0.1.0.jar
 target/ZstdNet-1.21.11-neoforge-0.1.0.jar
@@ -28,9 +28,29 @@ The 1.21.1 and 1.21.11 artifacts target Java 21 bytecode. The 26.1 artifacts tar
 
 NeoForge 1.21.1 uses the `server-1211` variant with shared client sources in
 `neoforge/src/client` and server/client entry sources in `neoforge/src/mc1211`.
+Its version is set by `neoforge_1211_mod_version` in `gradle.properties`;
+the other variants use `mod_version`.
 The 1.21.11 and 26.1 `client` variant uses `neoforge/src/client-entry`.
 The current 1.21.1 local build requires the mapped Minecraft and NeoForge JARs
 in the Gradle cache; a fresh CI runner still needs dependency bootstrapping.
+
+## NeoForge 1.21.1 Commands
+
+Dedicated-server operators (permission level 2) can run
+`/zstdnet <status|start|stop|reload>`. Compression starts automatically on
+dedicated servers. Clients default to `enabled=true` and `servers=*`;
+explicit settings in an existing client configuration are respected.
+`start` initializes same-port compression or resumes it after `stop`.
+`stop` stops intercepting new connections; existing connections keep their
+codec. `reload` reloads the dictionary from disk and starts compression.
+There is no `setup` command or port migration for this variant.
+
+`status` (also the default for `/zstdnet`) reports total upstream plus
+downstream traffic in bytes (compressed / uncompressed), compression ratio
+(compressed divided by uncompressed, as a percentage; zero without traffic),
+and the number of currently active ZstdNet connections. Counters cover the
+current server session and survive stop/start. Command messages, including
+dictionary commands, use English and Simplified Chinese language resources.
 
 ## Dictionaries (NeoForge 1.21.1)
 
@@ -44,13 +64,30 @@ Operators (permission level 2) can use:
 /zstdnet dictionary cancel
 /zstdnet dictionary export
 /zstdnet dictionary import <path>
+/zstdnet dictionary list
+/zstdnet dictionary switch <path>
+/zstdnet dictionary unload
+/zstdnet dictionary name <pending-file> <name>
 ```
+
+`switch` and `name` provide Tab completion for dictionary files. Normal saves prompt operators to name the dictionary within one minute, then apply it; timeout names it `untitled_yyyyMMdd_HH-mm-ss.SSS`. Shutdown saves use `temp_yyyyMMdd_HH-mm-ss.SSS` and are selected at the next startup. Operators receive a naming prompt on login until the file has been named. Renaming preserves the dictionary instance and updates the file and selection records.
+
+The selected dictionary path is saved in `config/zstdnet/dictionary-selection.txt` and restored on server startup. If no selection exists, the server discovers the first valid `.zdict` below `config/zstdnet`. `switch` changes the dictionary for new connections; `unload` selects no dictionary. Existing connections keep their negotiated dictionary until they reconnect.
 
 Training collects live ZstdNet traffic for 600 seconds by default (range 1–86400).
 `stop` finishes collection and trains asynchronously; `cancel` discards the
 session. Status reports samples, remaining time, and the final result. Server
-shutdown stops collection and prevents unfinished training from publishing;
-an already-running native training call may finish in the background.
+shutdown ends collection immediately, waits for training, and saves the
+dictionary before exiting. Saving progress and completion are logged at INFO;
+collection, training and five-second waiting messages use DEBUG.
+Insufficient samples or a training failure preserve the previous dictionary.
+
+Training targets a 128 KiB dictionary with a 16 MiB sample budget (128 times
+the dictionary size). Each sample contributes at most 4 KiB, so a full budget
+contains at least 4096 samples; reaching the budget starts training early.
+ZSTD may return a dictionary smaller than the target capacity.
+One long-lived server store shares the current immutable dictionary between
+connections; existing connections retain their negotiated version.
 
 The active dictionary is stored at `config/zstdnet/dictionary.zdict`. Export
 creates a snapshot under `config/zstdnet/exports` and prints a clickable,

@@ -13,6 +13,9 @@ ZSTD network codec for ZstdNet NeoForge ${minecraft_version} servers and clients
 [[mixins]]
 config = "zstdnet.mixins.json"
 
+[[mixins]]
+config = "zstdnet-1211.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId = "neoforge"
 type = "required"

@@ -5,8 +5,8 @@ import mys.zstdnet.reborn.core.ZstdNetConfig;
 import org.bukkit.configuration.file.FileConfiguration;
 
 
-final class PluginProxyConfig {
-    private PluginProxyConfig() {
+final class PluginConfig {
+    private PluginConfig() {
     }
 
     static ZstdNetConfig loadSamePort(FileConfiguration config, int serverPort) {

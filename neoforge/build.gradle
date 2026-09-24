@@ -1,5 +1,8 @@
 def clientLoomEnabled = (findProperty("client_loom_enabled") ?: "true").toString().toBoolean()
 def neoforgeVariant = (findProperty("neoforge_variant") ?: "client").toString()
+if (neoforgeVariant == "server-1211") {
+    version = neoforge_1211_mod_version
+}
 def namedClientJarEnabled = (findProperty("named_client_jar_enabled") ?: "false").toString().toBoolean()
 def minecraftClientUrl = (findProperty("minecraft_client_url") ?: "").toString()
 def namedClientJar = layout.buildDirectory.file("minecraft-client/${minecraft_version}.jar")

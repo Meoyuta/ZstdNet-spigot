@@ -12,7 +12,7 @@ import mys.zstdnet.reborn.core.protocol.ByteArrayOps;
 import mys.zstdnet.reborn.core.protocol.HandshakePacket;
 import mys.zstdnet.reborn.core.protocol.VarIntCodec;
 import mys.zstdnet.reborn.core.protocol.ZstdFrameCodec;
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import mys.zstdnet.reborn.core.stats.TrafficStats;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-final class NeoForgeSamePortZstdHandler extends ByteToMessageDecoder {
+final class SamePortZstdHandler extends ByteToMessageDecoder {
     private enum Mode {
         UNDECIDED,
         RAW,
@@ -34,16 +34,16 @@ final class NeoForgeSamePortZstdHandler extends ByteToMessageDecoder {
 
     private final ZstdNetConfig config;
     private final TrafficStats stats;
-    private final ProxyLogger logger;
+    private final ZstdNetLogger logger;
     private final ZstdDictionaryStore dictionaryStore;
     private final ZstdDictionaryTrainer dictionaryTrainer;
     private Mode mode = Mode.UNDECIDED;
     private boolean streamHeaderRead;
 
-    NeoForgeSamePortZstdHandler(
+    SamePortZstdHandler(
         ZstdNetConfig config,
         TrafficStats stats,
-        ProxyLogger logger,
+        ZstdNetLogger logger,
         ZstdDictionaryStore dictionaryStore,
         ZstdDictionaryTrainer dictionaryTrainer
     ) {
@@ -101,13 +101,43 @@ final class NeoForgeSamePortZstdHandler extends ByteToMessageDecoder {
             }
             streamHeaderRead = true;
             countConnection(ctx);
+            var offered = dictionaryStore.dictionary();
+            AtomicBoolean dictionaryActive = new AtomicBoolean();
+            ctx.channel().closeFuture().addListener(future -> {
+                if (dictionaryActive.compareAndSet(true, false)) stats.addDictionaryConnection(offered.id(), -1);
+            });
+            var session = ZstdDictionarySession.server(offered,
+                new mys.zstdnet.reborn.core.netty.ZstdDictionaryDownloadListener() {
+                    public void started(long id, int bytes) {
+                        logger.info("Sending dictionary id=" + Long.toUnsignedString(id)
+                            + " bytes=" + bytes + " to " + ctx.channel().remoteAddress());
+                    }
+                    public void progress(int received, int total) {}
+                    public void completed(long id) {
+                        if (ctx.channel().isActive() && dictionaryActive.compareAndSet(false, true)) {
+                            stats.addDictionaryConnection(id, 1);
+                            logger.info("Dictionary ACK confirmed from " + ctx.channel().remoteAddress()
+                                + ", id=" + Long.toUnsignedString(id));
+                        }
+                    }
+                    public void failed(String message) { logger.warn(message); }
+                });
             ZstdNettyPipeline.install(
                 ctx.pipeline(),
                 config.compressionLevel(),
                 false,
                 serverStats(),
-                ZstdDictionarySession.server(dictionaryStore.dictionary())
+                session
             );
+            // Send immediately, without waiting for an unrelated Minecraft response.
+            if (session.hasPendingControl()) {
+                var encoder = ctx.pipeline().context(ZstdNettyPipeline.OUTBOUND_HANDLER);
+                ((mys.zstdnet.reborn.core.netty.ZstdNettyEncoder) encoder.handler())
+                    .write(encoder, Unpooled.buffer(0), ctx.newPromise());
+                encoder.flush();
+            } else {
+                logger.info("Connection uses ordinary ZSTD (no dictionary): " + ctx.channel().remoteAddress());
+            }
             MinecraftCompressionDisabler.install(ctx.pipeline());
             logger.info("accepted ZstdNet client connection from " + ctx.channel().remoteAddress());
         }

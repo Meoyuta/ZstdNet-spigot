@@ -8,9 +8,16 @@ set "TARGET=%ROOT%\target"
 for /f "tokens=1,* delims==" %%A in ('findstr /B "mod_version=" "%ROOT%\gradle.properties"') do (
     set "VERSION=%%B"
 )
+for /f "tokens=1,* delims==" %%A in ('findstr /B "neoforge_1211_mod_version=" "%ROOT%\gradle.properties"') do (
+    set "NEOFORGE_1211_VERSION=%%B"
+)
 
 if "%VERSION%"=="" (
     echo Could not read mod_version from gradle.properties.
+    exit /b 1
+)
+if "%NEOFORGE_1211_VERSION%"=="" (
+    echo Could not read neoforge_1211_mod_version from gradle.properties.
     exit /b 1
 )
 
@@ -60,8 +67,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "NEOFORGE_JAR=%ROOT%\neoforge\build\libs\neoforge-%VERSION%.jar"
-set "OUTPUT_NEOFORGE_JAR=%TARGET%\ZstdNet-%MC_VERSION%-neoforge-server-client-%VERSION%.jar"
+set "NEOFORGE_JAR=%ROOT%\neoforge\build\libs\neoforge-%NEOFORGE_1211_VERSION%.jar"
+set "OUTPUT_NEOFORGE_JAR=%TARGET%\ZstdNet-%MC_VERSION%-neoforge-server-client-%NEOFORGE_1211_VERSION%.jar"
 
 if not exist "%NEOFORGE_JAR%" (
     echo Expected NeoForge jar was not found: %NEOFORGE_JAR%

@@ -11,7 +11,7 @@ import mys.zstdnet.reborn.core.protocol.ByteArrayOps;
 import mys.zstdnet.reborn.core.protocol.HandshakePacket;
 import mys.zstdnet.reborn.core.protocol.VarIntCodec;
 import mys.zstdnet.reborn.core.protocol.ZstdFrameCodec;
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import mys.zstdnet.reborn.core.ZstdNetConfig;
 import mys.zstdnet.reborn.core.stats.TrafficStats;
 import io.netty.buffer.ByteBuf;
@@ -34,7 +34,7 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
 
     private final ZstdNetConfig config;
     private final TrafficStats stats;
-    private final ProxyLogger logger;
+    private final ZstdNetLogger logger;
     private final ZstdDictionaryStore dictionaryStore;
     private final ZstdDictionaryTrainer dictionaryTrainer;
     private Mode mode = Mode.UNDECIDED;
@@ -43,7 +43,7 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
     SamePortZstdHandler(
         ZstdNetConfig config,
         TrafficStats stats,
-        ProxyLogger logger,
+        ZstdNetLogger logger,
         ZstdDictionaryStore dictionaryStore,
         ZstdDictionaryTrainer dictionaryTrainer
     ) {

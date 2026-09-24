@@ -19,15 +19,24 @@ public final class ZstdFrameCodec {
     }
 
     public static byte[] compressFrame(byte[] raw, int level, ZstdDictionary dictionary) throws IOException {
-        byte[] compressed = dictionary == null ? Zstd.compress(raw, level) : dictionary.compress(raw, level);
-        boolean storeRaw = compressed.length >= raw.length;
+        byte[] compressed = Zstd.compress(raw, level);
+        boolean usesDictionary = false;
+        if (dictionary != null) {
+            byte[] candidate = dictionary.compress(raw, level);
+            if (candidate.length < compressed.length) {
+                compressed = candidate;
+                usesDictionary = true;
+            }
+        }
+        int storedTag = (compressed.length << 1) | (usesDictionary ? 1 : 0);
+        boolean storeRaw = compressed.length + VarIntCodec.encode(storedTag).length >= raw.length + 1;
         ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(raw.length, compressed.length) + 10);
         out.write(VarIntCodec.encode(raw.length));
         if (storeRaw) {
             out.write(VarIntCodec.encode(0));
             out.write(raw);
         } else {
-            out.write(VarIntCodec.encode((compressed.length << 1) | (dictionary == null ? 0 : 1)));
+            out.write(VarIntCodec.encode(storedTag));
             out.write(compressed);
         }
         return out.toByteArray();

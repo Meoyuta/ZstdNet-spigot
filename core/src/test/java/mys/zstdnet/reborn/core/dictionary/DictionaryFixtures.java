@@ -1,11 +1,11 @@
 package mys.zstdnet.reborn.core.dictionary;
 import com.github.luben.zstd.Zstd;
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 public final class DictionaryFixtures {
-    public static final ProxyLogger LOGGER = new ProxyLogger() {
+    public static final ZstdNetLogger LOGGER = new ZstdNetLogger() {
         public void info(String message) {}
         public void warn(String message) {}
         public void error(String message) {}

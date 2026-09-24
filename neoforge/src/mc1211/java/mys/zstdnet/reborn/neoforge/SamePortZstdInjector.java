@@ -3,7 +3,7 @@ package mys.zstdnet.reborn.neoforge;
 import mys.zstdnet.reborn.core.ZstdNetConfig;
 import mys.zstdnet.reborn.core.dictionary.ZstdDictionaryStore;
 import mys.zstdnet.reborn.core.dictionary.ZstdDictionaryTrainer;
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import mys.zstdnet.reborn.core.stats.TrafficStats;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-final class NeoForgeSamePortZstdInjector implements AutoCloseable {
+final class SamePortZstdInjector implements AutoCloseable {
     private static final String ACCEPT_HANDLER = "zstdnet-accept-injector";
     private static final String CONNECTION_HANDLER = "zstdnet-same-port-codec";
     // Resolve once and read directly from a static final exact handle, following:
@@ -27,16 +27,16 @@ final class NeoForgeSamePortZstdInjector implements AutoCloseable {
 
     private final MinecraftServer minecraftServer;
     private final ZstdNetConfig config;
-    private final ProxyLogger logger;
+    private final ZstdNetLogger logger;
     private final ZstdDictionaryStore dictionaryStore;
     private final ZstdDictionaryTrainer dictionaryTrainer;
     private final TrafficStats stats = new TrafficStats();
     private final List<Channel> injectedServerChannels = new ArrayList<>();
 
-    NeoForgeSamePortZstdInjector(
+    SamePortZstdInjector(
         MinecraftServer minecraftServer,
         ZstdNetConfig config,
-        ProxyLogger logger,
+        ZstdNetLogger logger,
         ZstdDictionaryStore dictionaryStore,
         ZstdDictionaryTrainer dictionaryTrainer
     ) {
@@ -53,16 +53,28 @@ final class NeoForgeSamePortZstdInjector implements AutoCloseable {
             throw new IllegalStateException("could not find Minecraft server Netty channels");
         }
 
-        for (Channel channel : serverChannels) {
-            channel.eventLoop().submit(() -> {
-                if (channel.pipeline().get(ACCEPT_HANDLER) == null) {
-                    channel.pipeline().addFirst(ACCEPT_HANDLER, new AcceptInjector());
-                }
-            }).syncUninterruptibly();
-            injectedServerChannels.add(channel);
+        try {
+            for (Channel channel : serverChannels) {
+                channel.eventLoop().submit(() -> {
+                    if (channel.pipeline().get(ACCEPT_HANDLER) == null) {
+                        channel.pipeline().addFirst(ACCEPT_HANDLER, new AcceptInjector());
+                    }
+                }).syncUninterruptibly();
+                injectedServerChannels.add(channel);
+            }
+        } catch (RuntimeException e) {
+            close();
+            throw e;
         }
         logger.info("ZstdNet same-port injection active on " + serverChannels.size() + " server channel(s)");
     }
+
+    TrafficStats.Snapshot snapshot() {
+        return stats.snapshot();
+    }
+
+    int dictionaryConnections() { return stats.dictionaryConnections(); }
+    int dictionaryConnections(long id) { return stats.dictionaryConnections(id); }
 
     @Override
     public void close() {
@@ -115,7 +127,7 @@ final class NeoForgeSamePortZstdInjector implements AutoCloseable {
             if (msg instanceof Channel child && child.pipeline().get(CONNECTION_HANDLER) == null) {
                 child.pipeline().addFirst(
                     CONNECTION_HANDLER,
-                    new NeoForgeSamePortZstdHandler(config, stats, logger, dictionaryStore, dictionaryTrainer)
+                    new SamePortZstdHandler(config, stats, logger, dictionaryStore, dictionaryTrainer)
                 );
             }
             super.channelRead(ctx, msg);

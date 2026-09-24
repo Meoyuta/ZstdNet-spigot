@@ -23,10 +23,10 @@ public final class ZstdNetPlugin extends JavaPlugin {
         portSetup = new ServerPortSetup(this);
         dictionaryStore = new ZstdDictionaryStore(
             getDataFolder().toPath().resolve("dictionary.zdict"),
-            new BukkitProxyLogger(getLogger())
+            new BukkitLogger(getLogger())
         );
         dictionaryStore.load();
-        dictionaryTrainer = new ZstdDictionaryTrainer(dictionaryStore, new BukkitProxyLogger(getLogger()));
+        dictionaryTrainer = new ZstdDictionaryTrainer(dictionaryStore, new BukkitLogger(getLogger()));
 
         PluginCommand command = getCommand("zstdnet");
         if (command != null) {
@@ -68,11 +68,11 @@ public final class ZstdNetPlugin extends JavaPlugin {
             return true;
         }
         reloadConfig();
-        ZstdNetConfig config = PluginProxyConfig.loadSamePort(getConfig(), currentServerPort());
+        ZstdNetConfig config = PluginConfig.loadSamePort(getConfig(), currentServerPort());
         try {
             SamePortZstdInjector next = new SamePortZstdInjector(
                 config,
-                new BukkitProxyLogger(getLogger()),
+                new BukkitLogger(getLogger()),
                 dictionaryStore,
                 dictionaryTrainer
             );
@@ -116,7 +116,7 @@ public final class ZstdNetPlugin extends JavaPlugin {
     }
 
     ZstdNetConfig configuredConfig() {
-        return PluginProxyConfig.loadSamePort(getConfig(), currentServerPort());
+        return PluginConfig.loadSamePort(getConfig(), currentServerPort());
     }
 
     ZstdNetConfig activeConfig() {

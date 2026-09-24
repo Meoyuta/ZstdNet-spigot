@@ -13,7 +13,7 @@ ZstdNet 是一个同端口 ZSTD 网络插件，并提供 Fabric 和 NeoForge 客
 构建脚本会在需要时自动创建 `target` 目录，编译当前支持的 Minecraft 版本，并把所有发布 jar 复制到：
 
 ```text
-target/ZstdNet-1.21.1-neoforge-server-client-0.1.0.jar
+target/ZstdNet-1.21.1-neoforge-server-client-1.0.1-prerelease.jar
 target/ZstdNet-1.21.11-spigot-0.1.0.jar
 target/ZstdNet-1.21.11-fabric-0.1.0.jar
 target/ZstdNet-1.21.11-neoforge-0.1.0.jar
@@ -26,9 +26,25 @@ target/ZstdNet-26.1-neoforge-0.1.0.jar
 
 NeoForge 1.21.1 使用 `server-1211` 变体，共享客户端代码位于
 `neoforge/src/client`，服务端及双端入口位于 `neoforge/src/mc1211`。
+其版本由 `gradle.properties` 中的 `neoforge_1211_mod_version` 控制；
+其他变体继续使用 `mod_version`。
 1.21.11 和 26.1 的 `client` 变体使用 `neoforge/src/client-entry`。
 目前 1.21.1 本地构建依赖 Gradle 缓存中的映射 Minecraft 和 NeoForge JAR；
 全新的 CI 环境仍需补齐依赖初始化流程。
+
+## NeoForge 1.21.1 管理命令
+
+专用服务端管理员（权限等级 2）可使用
+`/zstdnet <status|start|stop|reload>`。专用服务端启动时自动启用压缩，
+客户端默认 `enabled=true`、`servers=*`；已有客户端配置中的显式设置仍然有效。
+`start` 初始化同端口压缩，或在 `stop` 后恢复压缩。`stop` 停止拦截新连接，
+现有连接保留协商时的编解码器。`reload` 从磁盘重新加载字典并启动压缩。
+此变体已移除 `setup` 命令，无需迁移端口。
+
+`status`（直接执行 `/zstdnet` 也会显示）报告上下行合计传输字节数
+（压缩后／压缩前）、压缩率（压缩后除以压缩前的百分比；无流量时为零）和
+当前有效 ZstdNet 连接数。统计覆盖本次服务器运行，停止再启动不会清零。
+管理及字典命令反馈均使用英文、简体中文语言文件。
 
 ## 字典功能（NeoForge 1.21.1）
 
@@ -41,13 +57,26 @@ NeoForge 1.21.1 使用 `server-1211` 变体，共享客户端代码位于
 /zstdnet dictionary cancel
 /zstdnet dictionary export
 /zstdnet dictionary import <文件路径>
+/zstdnet dictionary list
+/zstdnet dictionary switch <路径>
+/zstdnet dictionary unload
+/zstdnet dictionary name <待命名文件> <名称>
 ```
+
+`switch` 和 `name` 支持字典文件 Tab 补全。普通保存提示管理员在一分钟内命名并应用；超时自动命名为 `untitled_yyyyMMdd_HH-mm-ss.SSS`。关服保存使用 `temp_yyyyMMdd_HH-mm-ss.SSS`，下次启动时自动应用。管理员上线时会收到待命名提示，命名后不再提示。改名保留原字典实例，更新文件及选择记录。
+
+当前字典路径会保存到 `config/zstdnet/dictionary-selection.txt`，服务器启动时自动恢复。未保存选择时，会在 `config/zstdnet` 下发现第一个有效的 `.zdict`。`switch` 为新连接切换字典；`unload` 选择无字典模式。已有连接继续使用协商时的字典，重连后更新。
 
 默认采集 600 秒（10 分钟），可设置 1–86400 秒。训练需要玩家通过
 ZstdNet 连接产生实际流量。`stop` 提前结束采集并异步训练，
 `cancel` 放弃本次训练。状态命令显示样本数、剩余时间和最终结果。
-关服立即停止采集，禁止未完成任务发布字典；已进入本地库的训练调用
-可能在后台完成，但不会覆盖字典。
+关服立即结束采集，等待训练及保存完成后再退出。保存进度和结果使用 INFO；
+采集、训练及每五秒的等待记录使用 DEBUG。样本不足或训练失败时保留原字典。
+
+训练目标字典容量为 128 KiB，采样目标为其 128 倍，即 16 MiB。每条样本最多
+采集 4 KiB，满量至少包含 4096 条样本；达到目标后提前开始训练。
+ZSTD 实际生成的字典可能小于目标容量。服务端通过一个长生命周期字典仓库
+在连接间共享当前不可变字典，已有连接继续持有协商时的版本。
 
 字典保存在 `config/zstdnet/dictionary.zdict`，启动时自动加载。
 导出在 `config/zstdnet/exports` 生成快照，并输出可点击复制的完整路径。

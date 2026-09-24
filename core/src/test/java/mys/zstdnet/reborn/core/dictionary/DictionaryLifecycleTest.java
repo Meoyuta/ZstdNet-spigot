@@ -7,6 +7,39 @@ import java.time.Duration;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DictionaryLifecycleTest {
+    @Test void namingAndTimeoutKeepSavedInstance() throws Exception {
+        var store = new ZstdDictionaryStore(directory.resolve("dictionary.zdict"), DictionaryFixtures.LOGGER);
+        store.enableNaming();
+        var saved = store.save(DictionaryFixtures.dictionary().bytes());
+        assertNull(store.dictionary());
+        String pending = store.pendingNames().getFirst();
+        store.name(pending, "my_dictionary");
+        assertSame(saved, store.dictionary());
+        assertTrue(store.pendingNames().isEmpty());
+        var second = store.save(saved.bytes());
+        store.expireNames(System.currentTimeMillis() + 61_000);
+        assertSame(second, store.dictionary());
+        assertTrue(store.selectedPath().getFileName().toString().startsWith("untitled_"));
+    }
+
+    @Test void shutdownDictionaryAppliesOnRestartAndRenameKeepsInstance() throws Exception {
+        var store = new ZstdDictionaryStore(directory.resolve("dictionary.zdict"), DictionaryFixtures.LOGGER);
+        store.enableNaming();
+        store.beginShutdown();
+        store.save(DictionaryFixtures.dictionary().bytes());
+        assertNull(store.dictionary());
+        var restarted = new ZstdDictionaryStore(directory.resolve("dictionary.zdict"), DictionaryFixtures.LOGGER);
+        restarted.enableNaming();
+        assertTrue(restarted.loadSelected());
+        var selected = restarted.dictionary();
+        String file = restarted.pendingNames().getFirst();
+        assertTrue(file.startsWith("temp_"));
+        assertTrue(restarted.expireNames(Long.MAX_VALUE).isEmpty());
+        restarted.name(file, "after_restart");
+        assertSame(selected, restarted.dictionary());
+        restarted.enableNaming();
+        assertTrue(restarted.pendingNames().isEmpty());
+    }
     @TempDir Path directory;
     @Test void exportsImportsAndPreservesDictionaryOnInvalidImport() throws Exception {
         var original = DictionaryFixtures.dictionary();
@@ -44,16 +77,29 @@ class DictionaryLifecycleTest {
         }
     }
 
-    @Test void closeAbortsCollectionAndCannotRestart() throws Exception {
+    @Test void shutdownFinalizesCollectionAndCannotRestart() throws Exception {
         var store = new ZstdDictionaryStore(directory.resolve("dictionary.zdict"), DictionaryFixtures.LOGGER);
         var trainer = new ZstdDictionaryTrainer(store, DictionaryFixtures.LOGGER);
         assertTrue(trainer.start(Duration.ofMinutes(10), 3));
         for (byte[] sample : DictionaryFixtures.samples()) trainer.capture(sample);
-        trainer.close();
+        trainer.finishAndClose();
         assertFalse(trainer.status().training());
         assertFalse(trainer.start(null, 3));
         assertFalse(trainer.stopAndFinalize());
-        assertFalse(Files.exists(store.dictionaryPath()));
+        assertTrue(Files.exists(store.dictionaryPath()), trainer.status().result());
+        assertNotNull(store.dictionary());
+        assertTrue(store.dictionary().size() <= 128 * 1024);
+    }
+
+    @Test void shutdownWaitsForAlreadyQueuedTraining() throws Exception {
+        var store = new ZstdDictionaryStore(directory.resolve("dictionary.zdict"), DictionaryFixtures.LOGGER);
+        var trainer = new ZstdDictionaryTrainer(store, DictionaryFixtures.LOGGER);
+        trainer.start(null, 3);
+        for (byte[] sample : DictionaryFixtures.samples()) trainer.capture(sample);
+        assertTrue(trainer.stopAndFinalize());
+        trainer.finishAndClose();
+        assertNotNull(store.dictionary(), trainer.status().result());
+        assertArrayEquals(store.dictionary().bytes(), Files.readAllBytes(store.dictionaryPath()));
     }
 
     @Test void insufficientSamplesDoNotReplaceExistingDictionary() throws Exception {

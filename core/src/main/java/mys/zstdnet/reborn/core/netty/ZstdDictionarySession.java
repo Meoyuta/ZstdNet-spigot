@@ -42,6 +42,10 @@ public final class ZstdDictionarySession {
         return new ZstdDictionarySession(Role.SERVER, dictionary, null, ZstdDictionaryDownloadListener.NONE);
     }
 
+    public static ZstdDictionarySession server(ZstdDictionary dictionary, ZstdDictionaryDownloadListener listener) {
+        return new ZstdDictionarySession(Role.SERVER, dictionary, null, listener);
+    }
+
     public static ZstdDictionarySession withoutDictionary() {
         return new ZstdDictionarySession(Role.NONE, null, null, ZstdDictionaryDownloadListener.NONE);
     }
@@ -57,6 +61,7 @@ public final class ZstdDictionarySession {
     public synchronized byte[] pollOutboundControl() {
         if (role == Role.SERVER && offeredDictionary != null && !offerSent) {
             offerSent = true;
+            downloadListener.started(offeredDictionary.id(), offeredDictionary.size());
             return offer(offeredDictionary);
         }
         if (role == Role.CLIENT && pendingAcknowledgement != 0L) {
@@ -154,6 +159,7 @@ public final class ZstdDictionarySession {
                 throw new IOException("ZstdNet dictionary acknowledgement does not match server dictionary");
             }
             activeDictionary = offeredDictionary;
+            downloadListener.completed(id);
         } finally {
             in.release();
         }
@@ -194,7 +200,8 @@ public final class ZstdDictionarySession {
     }
 
     public synchronized boolean hasPendingControl() {
-        return role == Role.CLIENT && pendingAcknowledgement != 0L;
+        return role == Role.CLIENT && pendingAcknowledgement != 0L
+            || role == Role.SERVER && offeredDictionary != null && !offerSent;
     }
 
     public void disconnected() {

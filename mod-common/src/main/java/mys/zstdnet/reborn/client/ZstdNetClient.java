@@ -1,6 +1,6 @@
 package mys.zstdnet.reborn.client;
 
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import mys.zstdnet.reborn.core.dictionary.ZstdDictionary;
 import mys.zstdnet.reborn.core.dictionary.ZstdDictionaryStore;
 import mys.zstdnet.reborn.core.netty.ZstdDictionaryDownloadListener;
@@ -11,7 +11,7 @@ import java.util.Objects;
 
 public final class ZstdNetClient {
     private static volatile ClientConfig config;
-    private static volatile ProxyLogger logger;
+    private static volatile ZstdNetLogger logger;
     private static volatile ZstdDictionaryStore dictionaryStore;
     private static volatile java.util.function.Supplier<ZstdDictionaryDownloadListener> dictionaryDownloadListeners =
         () -> ZstdDictionaryDownloadListener.NONE;
@@ -19,7 +19,7 @@ public final class ZstdNetClient {
     private ZstdNetClient() {
     }
 
-    public static void init(Path configDir, ProxyLogger proxyLogger) {
+    public static void init(Path configDir, ZstdNetLogger proxyLogger) {
         logger = Objects.requireNonNull(proxyLogger, "proxyLogger");
         config = ClientConfig.load(configDir);
         dictionaryStore = new ZstdDictionaryStore(configDir.resolve("zstdnet").resolve("dictionary.zdict"), logger);
@@ -34,12 +34,12 @@ public final class ZstdNetClient {
         return current;
     }
 
-    public static ProxyLogger logger() {
-        ProxyLogger current = logger;
+    public static ZstdNetLogger logger() {
+        ZstdNetLogger current = logger;
         if (current != null) {
             return current;
         }
-        return new ProxyLogger() {
+        return new ZstdNetLogger() {
             @Override
             public void info(String message) {
             }

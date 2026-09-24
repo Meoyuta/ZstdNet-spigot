@@ -7,6 +7,24 @@ public final class TrafficStats {
     private static final long SAMPLE_INTERVAL_MS = 500L;
 
     private final AtomicInteger connections = new AtomicInteger();
+    private final java.util.concurrent.ConcurrentHashMap<Long, AtomicInteger> dictionaryConnections =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    public void addDictionaryConnection(long id, int delta) {
+        dictionaryConnections.compute(id, (key, count) -> {
+            if (count == null) count = new AtomicInteger();
+            return count.addAndGet(delta) <= 0 ? null : count;
+        });
+    }
+
+    public int dictionaryConnections() {
+        return dictionaryConnections.values().stream().mapToInt(AtomicInteger::get).sum();
+    }
+
+    public int dictionaryConnections(long id) {
+        AtomicInteger count = dictionaryConnections.get(id);
+        return count == null ? 0 : count.get();
+    }
     private final AtomicLong totalConnections = new AtomicLong();
     private final AtomicLong rawUp = new AtomicLong();
     private final AtomicLong rawDown = new AtomicLong();

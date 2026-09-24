@@ -32,14 +32,14 @@ final class ZstdNetCommand implements CommandExecutor, TabCompleter {
         switch (sub) {
             case "status" -> sendStatus(sender);
             case "reload" -> sender.sendMessage(plugin.reloadProxy()
-                ? ChatColor.GREEN + "ZstdNet proxy reloaded."
+                ? ChatColor.GREEN + "ZstdNet utils reloaded."
                 : failureMessage("reload"));
             case "start" -> sender.sendMessage(plugin.startProxy()
-                ? ChatColor.GREEN + "ZstdNet proxy started."
+                ? ChatColor.GREEN + "ZstdNet utils started."
                 : failureMessage("start"));
             case "stop" -> {
                 plugin.stopProxy();
-                sender.sendMessage(ChatColor.YELLOW + "ZstdNet proxy stopped.");
+                sender.sendMessage(ChatColor.YELLOW + "ZstdNet utils stopped.");
             }
             case "setup" -> runSetup(sender, args);
             default -> sender.sendMessage(ChatColor.YELLOW + "Usage: /zstdnet <status|reload|start|stop|setup [publicPort]>");
@@ -74,13 +74,13 @@ final class ZstdNetCommand implements CommandExecutor, TabCompleter {
         if (plugin.isSetupPendingRestart()) {
             return ChatColor.YELLOW + "ZstdNet setup is pending restart. Restart the server before running /zstdnet " + action + ".";
         }
-        return ChatColor.RED + "ZstdNet proxy " + action + " failed. Check the server log.";
+        return ChatColor.RED + "ZstdNet utils " + action + " failed. Check the server log.";
     }
 
     private void sendStatus(CommandSender sender) {
         sender.sendMessage(ChatColor.AQUA + "ZstdNet running: " + plugin.isProxyRunning());
         if (plugin.isSetupPendingRestart()) {
-            sender.sendMessage(ChatColor.YELLOW + "Setup pending restart: restart the server before starting the proxy.");
+            sender.sendMessage(ChatColor.YELLOW + "Setup pending restart: restart the server before starting the utils.");
         }
         ZstdNetConfig config = plugin.activeConfig();
         if (config != null) {

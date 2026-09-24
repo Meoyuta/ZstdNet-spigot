@@ -1,13 +1,13 @@
 package mys.zstdnet.reborn.spigot;
 
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 
 import java.util.logging.Logger;
 
-final class BukkitProxyLogger implements ProxyLogger {
+final class BukkitLogger implements ZstdNetLogger {
     private final Logger logger;
 
-    BukkitProxyLogger(Logger logger) {
+    BukkitLogger(Logger logger) {
         this.logger = logger;
     }
 

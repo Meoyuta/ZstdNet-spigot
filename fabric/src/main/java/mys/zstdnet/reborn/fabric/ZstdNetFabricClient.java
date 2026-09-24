@@ -1,7 +1,7 @@
 package mys.zstdnet.reborn.fabric;
 
 import mys.zstdnet.reborn.client.ZstdNetClient;
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
@@ -15,7 +15,7 @@ public final class ZstdNetFabricClient implements ClientModInitializer {
         ZstdNetClient.init(FabricLoader.getInstance().getConfigDir(), new Slf4jProxyLogger(LOGGER));
     }
 
-    private record Slf4jProxyLogger(Logger logger) implements ProxyLogger {
+    private record Slf4jProxyLogger(Logger logger) implements ZstdNetLogger {
         @Override
         public void info(String message) {
             logger.info(message);

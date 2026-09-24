@@ -1,6 +1,6 @@
 package mys.zstdnet.reborn.spigot;
 
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import mys.zstdnet.reborn.core.ZstdNetConfig;
 import mys.zstdnet.reborn.core.stats.TrafficStats;
 import mys.zstdnet.reborn.core.dictionary.ZstdDictionaryStore;
@@ -25,7 +25,7 @@ final class SamePortZstdInjector implements AutoCloseable {
     private static final String CONNECTION_HANDLER = "zstdnet-same-port-codec";
 
     private final ZstdNetConfig config;
-    private final ProxyLogger logger;
+    private final ZstdNetLogger logger;
     private final ZstdDictionaryStore dictionaryStore;
     private final ZstdDictionaryTrainer dictionaryTrainer;
     private final TrafficStats stats = new TrafficStats();
@@ -33,7 +33,7 @@ final class SamePortZstdInjector implements AutoCloseable {
 
     SamePortZstdInjector(
         ZstdNetConfig config,
-        ProxyLogger logger,
+        ZstdNetLogger logger,
         ZstdDictionaryStore dictionaryStore,
         ZstdDictionaryTrainer dictionaryTrainer
     ) {

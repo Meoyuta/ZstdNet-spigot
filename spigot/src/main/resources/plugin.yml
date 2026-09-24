@@ -4,10 +4,10 @@ main: mys.zstdnet.reborn.spigot.ZstdNetPlugin
 api-version: '${plugin_api_version}'
 load: STARTUP
 author: Codex
-description: ZSTD network proxy for Spigot ${minecraft_version}.
+description: ZSTD network utils for Spigot ${minecraft_version}.
 commands:
   zstdnet:
-    description: Manage the ZstdNet proxy.
+    description: Manage the ZstdNet utils.
     usage: /zstdnet <status|reload|start|stop|setup [publicPort]>
     permission: zstdnet.admin
 permissions:

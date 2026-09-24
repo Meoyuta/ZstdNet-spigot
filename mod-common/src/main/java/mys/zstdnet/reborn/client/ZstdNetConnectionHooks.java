@@ -3,7 +3,7 @@ package mys.zstdnet.reborn.client;
 import mys.zstdnet.reborn.core.netty.ZstdFrameStats;
 import mys.zstdnet.reborn.core.netty.ZstdDictionarySession;
 import mys.zstdnet.reborn.core.netty.ZstdNettyPipeline;
-import mys.zstdnet.reborn.core.proxy.ProxyLogger;
+import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import io.netty.channel.ChannelPipeline;
 
 import java.util.Locale;
@@ -63,7 +63,7 @@ public final class ZstdNetConnectionHooks {
         try {
             ZstdNettyPipeline.reposition(pipeline);
         } catch (RuntimeException e) {
-            ProxyLogger logger = ZstdNetClient.logger();
+            ZstdNetLogger logger = ZstdNetClient.logger();
             logger.warn("failed to reposition ZstdNet pipeline: " + e);
         }
     }
