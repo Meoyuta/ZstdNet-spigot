@@ -29,6 +29,15 @@ if not exist "%TARGET%" (
     )
 )
 
+rem Remove previous build artifacts before starting a new build.
+if exist "%TARGET%\*.jar" (
+    del /Q /S "%TARGET%\*.jar" >nul 2>&1
+    if errorlevel 1 (
+        echo Could not remove existing jar files from target: %TARGET%
+        exit /b 1
+    )
+)
+
 call :buildNeoForgeVariant 1.21.1 21 13.0.11 21.1.223 4.0.42 "https://piston-data.mojang.com/v1/objects/30c73b1c5da787909b2f73340419fdf13b9def88/client.jar"
 if errorlevel 1 exit /b 1
 
