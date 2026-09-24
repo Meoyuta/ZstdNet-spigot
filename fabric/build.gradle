@@ -3,7 +3,7 @@ def clientLoomEnabled = (findProperty("client_loom_enabled") ?: clientMixinEnabl
 def fabricLoomEnabled = clientLoomEnabled && !(findProperty("skip_fabric_loom") ?: "false").toString().toBoolean()
 def namedClientJarEnabled = (findProperty("named_client_jar_enabled") ?: "false").toString().toBoolean()
 def minecraftClientUrl = (findProperty("minecraft_client_url") ?: "").toString()
-def namedClientJar = layout.buildDirectory.file("minecraft-client/${minecraft_version}.jar")
+def namedClientJar = project.layout.buildDirectory.file("minecraft-client/${minecraft_version}.jar")
 
 if (fabricLoomEnabled) {
     apply plugin: "dev.architectury.loom"
