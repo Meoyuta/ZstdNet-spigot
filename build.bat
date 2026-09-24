@@ -56,7 +56,7 @@ if errorlevel 1 exit /b 1
 echo.
 echo Building ZstdNet NeoForge server-client mod for Minecraft %MC_VERSION%...
 
-call "%ROOT%\gradlew.bat" :neoforge:clean :neoforge:build ^
+call "%ROOT%\gradlew.bat" --no-daemon :neoforge:clean :neoforge:build ^
     -Pminecraft_version=%MC_VERSION% ^
     -Pjava_version=%JAVA_VERSION% ^
     -Parchitectury_api_version=%ARCHITECTURY_API_VERSION% ^
@@ -109,7 +109,7 @@ if errorlevel 1 exit /b 1
 echo.
 echo Building ZstdNet for Minecraft %MC_VERSION%...
 
-call "%ROOT%\gradlew.bat" clean build ^
+call "%ROOT%\gradlew.bat" --no-daemon clean build ^
     -Pminecraft_version=%MC_VERSION% ^
     -Pjava_version=%JAVA_VERSION% ^
     -Pspigot_api_version=%SPIGOT_API_VERSION% ^
