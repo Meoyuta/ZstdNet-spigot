@@ -50,6 +50,9 @@ set "NEOFORGE_VERSION=%~4"
 set "NEOFORGE_FML_LOADER_VERSION=%~5"
 set "MINECRAFT_CLIENT_URL=%~6"
 
+call :selectJava %JAVA_VERSION%
+if errorlevel 1 exit /b 1
+
 echo.
 echo Building ZstdNet NeoForge server-client mod for Minecraft %MC_VERSION%...
 
@@ -99,6 +102,9 @@ shift
 set "NAMED_CLIENT_JAR_ENABLED=%~9"
 shift
 set "MINECRAFT_CLIENT_URL=%~9"
+
+call :selectJava %JAVA_VERSION%
+if errorlevel 1 exit /b 1
 
 echo.
 echo Building ZstdNet for Minecraft %MC_VERSION%...
@@ -164,4 +170,19 @@ if errorlevel 1 (
 echo Built plugin: %OUTPUT_JAR%
 echo Built Fabric client: %OUTPUT_FABRIC_JAR%
 echo Built NeoForge client: %OUTPUT_NEOFORGE_JAR%
+exit /b 0
+
+:selectJava
+set "SELECTED_JAVA_HOME="
+if "%~1"=="21" set "SELECTED_JAVA_HOME=%JAVA_HOME_21_X64%"
+if "%~1"=="25" set "SELECTED_JAVA_HOME=%JAVA_HOME_25_X64%"
+
+rem GitHub Actions provides versioned JAVA_HOME variables. Locally, keep the current JAVA_HOME.
+if "%SELECTED_JAVA_HOME%"=="" exit /b 0
+if not exist "%SELECTED_JAVA_HOME%\bin\java.exe" (
+    echo Java %~1 was selected but JAVA_HOME does not contain java.exe: %SELECTED_JAVA_HOME%
+    exit /b 1
+)
+set "JAVA_HOME=%SELECTED_JAVA_HOME%"
+echo Using Java %~1: %JAVA_HOME%
 exit /b 0
