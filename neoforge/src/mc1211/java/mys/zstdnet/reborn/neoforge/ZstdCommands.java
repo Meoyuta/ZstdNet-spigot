@@ -6,6 +6,7 @@ import mys.zstdnet.reborn.core.dictionary.ZstdDictionaryTrainer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.CommandSyntaxException;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -60,27 +61,33 @@ final class ZstdCommands {
 
     static void register(RegisterCommandsEvent event, ZstdNet mod) {
         ZstdCommands handler = new ZstdCommands(mod);
-        var root = Commands.literal("zstdnet").requires(s -> s.hasPermission(2))
+        var root = Commands.literal("zstdnet")
             .executes(c -> handler.management(c.getSource(), "status"));
         for (String action : new String[]{"status", "start", "stop", "reload"}) {
-            root.then(Commands.literal(action).executes(c -> handler.management(c.getSource(), action)));
+            var command = Commands.literal(action)
+                .executes(c -> handler.management(c.getSource(), action));
+            if (!action.equals("status")) command.requires(s -> s.hasPermission(2));
+            root.then(command);
         }
+        root.then(Commands.literal("ping").executes(c -> handler.ping(c.getSource())));
         var dictionary = Commands.literal("dictionary")
             .executes(c -> handler.dictionary(c.getSource(), "status", ""));
         for (String action : new String[]{"status", "stop", "cancel", "export", "unload", "list"}) {
-            dictionary.then(Commands.literal(action)
-                .executes(c -> handler.dictionary(c.getSource(), action, "")));
+            var command = Commands.literal(action)
+                .executes(c -> handler.dictionary(c.getSource(), action, ""));
+            if (!action.equals("status") && !action.equals("list")) command.requires(s -> s.hasPermission(2));
+            dictionary.then(command);
         }
-        dictionary.then(Commands.literal("train")
+        dictionary.then(Commands.literal("train").requires(s -> s.hasPermission(2))
             .executes(c -> handler.dictionary(c.getSource(), "train", "600"))
             .then(Commands.argument("seconds", IntegerArgumentType.integer(1, 86400))
                 .executes(c -> handler.dictionary(c.getSource(), "train",
                     Integer.toString(IntegerArgumentType.getInteger(c, "seconds"))))));
-        dictionary.then(Commands.literal("import")
+        dictionary.then(Commands.literal("import").requires(s -> s.hasPermission(2))
             .then(Commands.argument("path", StringArgumentType.greedyString())
                 .executes(c -> handler.dictionary(c.getSource(), "import",
                     StringArgumentType.getString(c, "path")))));
-        dictionary.then(Commands.literal("switch")
+        dictionary.then(Commands.literal("switch").requires(s -> s.hasPermission(2))
             .executes(c -> handler.dictionary(c.getSource(), "list", ""))
             .then(Commands.argument("path", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
@@ -95,7 +102,7 @@ final class ZstdCommands {
                 })
                 .executes(c -> handler.dictionary(c.getSource(), "switch",
                     StringArgumentType.getString(c, "path")))));
-        dictionary.then(Commands.literal("name")
+        dictionary.then(Commands.literal("name").requires(s -> s.hasPermission(2))
             .then(Commands.argument("file", StringArgumentType.word())
                 .suggests((context, builder) -> {
                     for (String file : mod.dictionaryStore().pendingNames()) {
@@ -116,6 +123,12 @@ final class ZstdCommands {
                         }
                     }))));
         event.getDispatcher().register(root.then(dictionary));
+    }
+
+    private int ping(CommandSourceStack source) throws CommandSyntaxException {
+        var player = source.getPlayerOrException();
+        success(source, "ping", player.connection.latency());
+        return 1;
     }
 
     private int management(CommandSourceStack source, String action) {

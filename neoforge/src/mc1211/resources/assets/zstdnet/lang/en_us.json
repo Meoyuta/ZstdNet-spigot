@@ -53,5 +53,6 @@
   "zstdnet.command.dictionary.state.insufficient_samples": "not enough traffic samples; connect players and try again",
   "zstdnet.command.dictionary.state.failed": "training failed; check the server log",
   "zstdnet.command.dictionary.state.cancelled": "cancelled",
-  "zstdnet.command.dictionary.state.idle": "idle"
+  "zstdnet.command.dictionary.state.idle": "idle",
+  "zstdnet.command.ping": "Your latency: %s ms"
 }

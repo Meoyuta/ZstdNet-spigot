@@ -53,5 +53,6 @@
   "zstdnet.command.dictionary.state.insufficient_samples": "流量样本不足，请让玩家连接并产生流量后重试",
   "zstdnet.command.dictionary.state.failed": "训练失败，请查看服务器日志",
   "zstdnet.command.dictionary.state.cancelled": "已取消",
-  "zstdnet.command.dictionary.state.idle": "空闲"
+  "zstdnet.command.dictionary.state.idle": "空闲",
+  "zstdnet.command.ping": "当前延迟：%s 毫秒"
 }
