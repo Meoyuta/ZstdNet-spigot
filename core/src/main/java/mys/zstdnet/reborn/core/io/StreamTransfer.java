@@ -16,16 +16,16 @@ public final class StreamTransfer {
     }
 
     public static void copyAndFlush(InputStream in, OutputStream out, Duration flushInterval) throws IOException {
-        byte[] buffer = new byte[BUFFER_SIZE];
-        long lastFlush = System.nanoTime();
-        long intervalNanos = flushInterval == null ? 0L : flushInterval.toNanos();
+        var buffer = new byte[BUFFER_SIZE];
+        var lastFlush = System.nanoTime();
+        var intervalNanos = flushInterval == null ? 0L : flushInterval.toNanos();
         int read;
         while ((read = in.read(buffer)) >= 0) {
-            if (read <= 0) {
+            if (read == 0) {
                 continue;
             }
             out.write(buffer, 0, read);
-            long now = System.nanoTime();
+            var now = System.nanoTime();
             if (intervalNanos <= 0L || now - lastFlush >= intervalNanos) {
                 out.flush();
                 lastFlush = now;

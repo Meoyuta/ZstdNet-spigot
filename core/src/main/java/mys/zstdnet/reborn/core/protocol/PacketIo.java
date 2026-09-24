@@ -11,7 +11,7 @@ public final class PacketIo {
     }
 
     public static byte[] readPacket(InputStream in) throws IOException {
-        int length = VarIntCodec.read(in);
+        var length = VarIntCodec.read(in);
         if (length <= 0) {
             return new byte[0];
         }
@@ -19,12 +19,12 @@ public final class PacketIo {
     }
 
     public static byte[] readPacketWire(InputStream in, int maxPayloadBytes) throws IOException {
-        byte[] prefix = new byte[5];
-        int prefixLength = 0;
+        var prefix = new byte[5];
+        var prefixLength = 0;
         VarIntRead lengthRead = null;
 
         while (prefixLength < prefix.length && lengthRead == null) {
-            int next = in.read();
+            var next = in.read();
             if (next < 0) {
                 throw new EOFException("unexpected eof while reading packet length");
             }
@@ -39,15 +39,15 @@ public final class PacketIo {
             throw new IOException("packet too large: " + lengthRead.value());
         }
 
-        byte[] payload = readFully(in, lengthRead.value());
+        var payload = readFully(in, lengthRead.value());
         return ByteArrayOps.concat(Arrays.copyOf(prefix, prefixLength), payload);
     }
 
     public static byte[] readFully(InputStream in, int length) throws IOException {
-        byte[] data = new byte[length];
-        int offset = 0;
+        var data = new byte[length];
+        var offset = 0;
         while (offset < length) {
-            int read = in.read(data, offset, length - offset);
+            var read = in.read(data, offset, length - offset);
             if (read < 0) {
                 throw new EOFException("unexpected eof");
             }
@@ -64,7 +64,7 @@ public final class PacketIo {
     }
 
     public static byte[] extractPacketPayload(byte[] packetWire) throws IOException {
-        VarIntRead length = VarIntCodec.read(packetWire, 0, packetWire.length);
+        var length = VarIntCodec.read(packetWire, 0, packetWire.length);
         if (length == null || length.value() < 0 || length.next() + length.value() > packetWire.length) {
             throw new IOException("invalid packet");
         }

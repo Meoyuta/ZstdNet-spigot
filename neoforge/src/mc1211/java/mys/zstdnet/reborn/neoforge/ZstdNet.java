@@ -64,8 +64,8 @@ public final class ZstdNet {
             }
             return true;
         }
-        int port = server.getPort();
-        ZstdNetConfig config = ZstdNetConfig.defaults(
+        var port = server.getPort();
+        var config = ZstdNetConfig.defaults(
             new HostPort("0.0.0.0", port),
             new HostPort("same-port", port)
         );
@@ -77,9 +77,9 @@ public final class ZstdNet {
         }
         dictionaryStore.loadSelected();
 
-        ZstdDictionaryTrainer trainer = new ZstdDictionaryTrainer(dictionaryStore, logger);
+        var trainer = new ZstdDictionaryTrainer(dictionaryStore, logger);
         try {
-            SamePortZstdInjector next = new SamePortZstdInjector(
+            var next = new SamePortZstdInjector(
                 server,
                 config,
                 logger,

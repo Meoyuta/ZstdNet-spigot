@@ -4,8 +4,6 @@ import mys.zstdnet.reborn.core.ZstdNetConfig;
 import mys.zstdnet.reborn.core.stats.TrafficStats;
 import mys.zstdnet.reborn.core.dictionary.ZstdDictionaryStore;
 import mys.zstdnet.reborn.core.dictionary.ZstdDictionaryTrainer;
-import org.bukkit.command.PluginCommand;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -28,9 +26,9 @@ public final class ZstdNetPlugin extends JavaPlugin {
         dictionaryStore.load();
         dictionaryTrainer = new ZstdDictionaryTrainer(dictionaryStore, new BukkitLogger(getLogger()));
 
-        PluginCommand command = getCommand("zstdnet");
+        var command = getCommand("zstdnet");
         if (command != null) {
-            ZstdNetCommand executor = new ZstdNetCommand(this);
+            var executor = new ZstdNetCommand(this);
             command.setExecutor(executor);
             command.setTabCompleter(executor);
         }
@@ -68,9 +66,9 @@ public final class ZstdNetPlugin extends JavaPlugin {
             return true;
         }
         reloadConfig();
-        ZstdNetConfig config = PluginConfig.loadSamePort(getConfig(), currentServerPort());
+        var config = PluginConfig.loadSamePort(getConfig(), currentServerPort());
         try {
-            SamePortZstdInjector next = new SamePortZstdInjector(
+            var next = new SamePortZstdInjector(
                 config,
                 new BukkitLogger(getLogger()),
                 dictionaryStore,
@@ -135,8 +133,8 @@ public final class ZstdNetPlugin extends JavaPlugin {
         if (!getDataFolder().exists() && !getDataFolder().mkdirs()) {
             getLogger().warning("Could not create plugin data folder: " + getDataFolder());
         }
-        FileConfiguration config = getConfig();
-        int serverPort = publicPortOverride == null ? currentServerPort() : publicPortOverride;
+        var config = getConfig();
+        var serverPort = publicPortOverride == null ? currentServerPort() : publicPortOverride;
         if (serverPort <= 0) {
             serverPort = config.getInt("listen.port", 25565);
         }

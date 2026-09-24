@@ -19,18 +19,18 @@ public final class ZstdFrameCodec {
     }
 
     public static byte[] compressFrame(byte[] raw, int level, ZstdDictionary dictionary) throws IOException {
-        byte[] compressed = Zstd.compress(raw, level);
-        boolean usesDictionary = false;
+        var compressed = Zstd.compress(raw, level);
+        var usesDictionary = false;
         if (dictionary != null) {
-            byte[] candidate = dictionary.compress(raw, level);
+            var candidate = dictionary.compress(raw, level);
             if (candidate.length < compressed.length) {
                 compressed = candidate;
                 usesDictionary = true;
             }
         }
-        int storedTag = (compressed.length << 1) | (usesDictionary ? 1 : 0);
-        boolean storeRaw = compressed.length + VarIntCodec.encode(storedTag).length >= raw.length + 1;
-        ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(raw.length, compressed.length) + 10);
+        var storedTag = (compressed.length << 1) | (usesDictionary ? 1 : 0);
+        var storeRaw = compressed.length + VarIntCodec.encode(storedTag).length >= raw.length + 1;
+        var out = new ByteArrayOutputStream(Math.min(raw.length, compressed.length) + 10);
         out.write(VarIntCodec.encode(raw.length));
         if (storeRaw) {
             out.write(VarIntCodec.encode(0));
@@ -47,20 +47,20 @@ public final class ZstdFrameCodec {
     }
 
     public static byte[] readFrame(InputStream in, ZstdDictionary dictionary) throws IOException {
-        int rawLength = VarIntCodec.read(in);
-        int storedTag = VarIntCodec.read(in);
+        var rawLength = VarIntCodec.read(in);
+        var storedTag = VarIntCodec.read(in);
         if (rawLength <= 0 || rawLength > MAX_FRAME_BYTES || storedTag < 0 || storedTag > (MAX_FRAME_BYTES << 1) + 1) {
             throw new IOException("invalid zstd frame length");
         }
         if (storedTag == 0) {
             return PacketIo.readFully(in, rawLength);
         }
-        boolean usesDictionary = (storedTag & 1) == 1;
-        int storedLength = storedTag >>> 1;
-        if (storedLength <= 0) {
+        var usesDictionary = (storedTag & 1) == 1;
+        var storedLength = storedTag >>> 1;
+        if (storedLength == 0) {
             throw new IOException("invalid zstd frame payload length");
         }
-        byte[] compressed = PacketIo.readFully(in, storedLength);
+        var compressed = PacketIo.readFully(in, storedLength);
         if (usesDictionary && dictionary == null) {
             throw new IOException("received dictionary-compressed ZstdNet frame before dictionary activation");
         }
@@ -72,7 +72,7 @@ public final class ZstdFrameCodec {
     }
 
     public static byte[] decompressFrame(byte[] compressed, int rawLength, ZstdDictionary dictionary) throws IOException {
-        byte[] raw = dictionary == null ? Zstd.decompress(compressed, rawLength) : dictionary.decompress(compressed, rawLength);
+        var raw = dictionary == null ? Zstd.decompress(compressed, rawLength) : dictionary.decompress(compressed, rawLength);
         if (raw.length != rawLength) {
             throw new IOException("zstd frame length mismatch");
         }

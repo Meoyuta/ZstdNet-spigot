@@ -12,8 +12,8 @@ class DictionarySyncTest {
     @Test void fragmentedDownloadAcknowledgesWithoutGameTrafficAndRoundTrips() throws Exception {
         var dictionary = DictionaryFixtures.dictionary();
         var serverSession = ZstdDictionarySession.server(dictionary);
-        AtomicInteger progress = new AtomicInteger();
-        AtomicInteger completed = new AtomicInteger();
+        var progress = new AtomicInteger();
+        var completed = new AtomicInteger();
         var clientSession = ZstdDictionarySession.client((id, bytes) -> ZstdDictionary.fromBytes(bytes),
             new ZstdDictionaryDownloadListener() {
                 public void started(long id, int total) {}
@@ -24,7 +24,7 @@ class DictionarySyncTest {
         var server = channel(serverSession);
         var client = channel(clientSession);
         try {
-            byte[] raw = DictionaryFixtures.samples()[0];
+            var raw = DictionaryFixtures.samples()[0];
             server.writeOutbound(Unpooled.wrappedBuffer(raw));
             ByteBuf wire = server.readOutbound();
             try {
@@ -69,14 +69,14 @@ class DictionarySyncTest {
         var dictionary = DictionaryFixtures.dictionary();
         var server = ZstdDictionarySession.server(dictionary);
         var client = ZstdDictionarySession.client((id, bytes) -> ZstdDictionary.fromBytes(bytes), null);
-        byte[] offer = server.pollOutboundControl();
-        byte[] wrong = offer.clone();
+        var offer = java.util.Objects.requireNonNull(server.pollOutboundControl());
+        var wrong = offer.clone();
         wrong[8] ^= 1;
         assertThrows(java.io.IOException.class, () -> client.receiveControl(wrong));
         assertNull(client.activeDictionary());
         client.receiveControl(offer);
         assertThrows(java.io.IOException.class, () -> client.receiveControl(offer));
-        byte[] ack = client.pollOutboundControl();
+        var ack = java.util.Objects.requireNonNull(client.pollOutboundControl());
         var unopened = ZstdDictionarySession.server(dictionary);
         assertThrows(java.io.IOException.class, () -> unopened.receiveControl(ack));
         server.receiveControl(ack);
@@ -94,7 +94,7 @@ class DictionarySyncTest {
         ByteBuf actual = channel.readInbound();
         assertNotNull(actual);
         try {
-            byte[] bytes = new byte[actual.readableBytes()];
+            var bytes = new byte[actual.readableBytes()];
             actual.readBytes(bytes);
             assertArrayEquals(expected, bytes);
         } finally { actual.release(); }

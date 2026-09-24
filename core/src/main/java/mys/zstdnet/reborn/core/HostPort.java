@@ -24,19 +24,19 @@ public record HostPort(String host, int port) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("empty address");
         }
-        String value = raw.trim();
+        var value = raw.trim();
         if (value.startsWith("[") && value.contains("]")) {
-            int end = value.indexOf(']');
-            String host = normalizeHost(value.substring(1, end));
-            int port = defaultPort;
+            var end = value.indexOf(']');
+            var host = normalizeHost(value.substring(1, end));
+            var port = defaultPort;
             if (end + 1 < value.length() && value.charAt(end + 1) == ':') {
                 port = Integer.parseInt(value.substring(end + 2).trim());
             }
             return new HostPort(host, port);
         }
 
-        int firstColon = value.indexOf(':');
-        int lastColon = value.lastIndexOf(':');
+        var firstColon = value.indexOf(':');
+        var lastColon = value.lastIndexOf(':');
         if (firstColon > 0 && firstColon == lastColon) {
             return new HostPort(
                 normalizeHost(value.substring(0, lastColon)),
@@ -57,7 +57,7 @@ public record HostPort(String host, int port) {
     }
 
     private static String normalizeHost(String host) {
-        String normalized = host.trim();
+        var normalized = host.trim();
         if (normalized.endsWith(".") && normalized.length() > 1) {
             normalized = normalized.substring(0, normalized.length() - 1);
         }

@@ -43,13 +43,13 @@ final class SamePortZstdInjector implements AutoCloseable {
         this.dictionaryTrainer = dictionaryTrainer;
     }
 
-    void inject() throws Exception {
-        List<Channel> serverChannels = findServerChannels();
+    void inject() {
+        var serverChannels = findServerChannels();
         if (serverChannels.isEmpty()) {
             throw new IllegalStateException("could not find Minecraft server Netty channels");
         }
 
-        for (Channel channel : serverChannels) {
+        for (var channel : serverChannels) {
             channel.eventLoop().submit(() -> {
                 if (channel.pipeline().get(ACCEPT_HANDLER) == null) {
                     channel.pipeline().addFirst(ACCEPT_HANDLER, new AcceptInjector());
@@ -93,14 +93,14 @@ final class SamePortZstdInjector implements AutoCloseable {
         }
     }
 
-    private static List<Channel> findServerChannels() throws Exception {
+    private static List<Channel> findServerChannels() {
         try {
             Object server = (Object) ServerAccess.SERVER.invokeExact((Object) Bukkit.getServer());
             Object listener = (Object) ServerAccess.CONNECTION.invokeExact(server);
             List<?> futures = (List<?>) ServerAccess.CHANNELS.invokeExact(listener);
-            List<Channel> channels = new ArrayList<>();
+            var channels = new ArrayList<Channel>();
             synchronized (futures) {
-                for (Object value : futures) {
+                for (var value : futures) {
                     if (value instanceof ChannelFuture future) {
                         channels.add(future.channel());
                     }
@@ -120,13 +120,13 @@ final class SamePortZstdInjector implements AutoCloseable {
 
         static {
             try {
-                Method serverMethod = Bukkit.getServer().getClass().getMethod("getServer");
-                SERVER = unreflect(serverMethod).asType(MethodType.methodType(Object.class, Object.class));
-                Class<?> serverType = serverMethod.getReturnType();
-                Method connectionMethod = connectionMethod(serverType);
-                CONNECTION = unreflect(connectionMethod).asType(MethodType.methodType(Object.class, Object.class));
-                Class<?> listenerType = connectionMethod.getReturnType();
-                Field channels = channelsField(listenerType);
+                var serverMethod = Bukkit.getServer().getClass().getMethod("getServer");
+                SERVER = betterReflect(serverMethod).asType(MethodType.methodType(Object.class, Object.class));
+                var serverType = serverMethod.getReturnType();
+                var connectionMethod = connectionMethod(serverType);
+                CONNECTION = betterReflect(connectionMethod).asType(MethodType.methodType(Object.class, Object.class));
+                var listenerType = connectionMethod.getReturnType();
+                var channels = channelsField(listenerType);
                 CHANNELS = MethodHandles.privateLookupIn(channels.getDeclaringClass(), MethodHandles.lookup())
                     .unreflectGetter(channels).asType(MethodType.methodType(List.class, Object.class));
             } catch (ReflectiveOperationException e) {
@@ -134,7 +134,7 @@ final class SamePortZstdInjector implements AutoCloseable {
             }
         }
 
-        private static MethodHandle unreflect(Method method) throws IllegalAccessException {
+        private static MethodHandle betterReflect(Method method) throws IllegalAccessException {
             return MethodHandles.privateLookupIn(method.getDeclaringClass(), MethodHandles.lookup())
                 .unreflect(method);
         }
@@ -144,8 +144,8 @@ final class SamePortZstdInjector implements AutoCloseable {
                 return type.getMethod("getConnection");
             } catch (NoSuchMethodException ignored) {
                 // Older Spigot mappings rename members but retain the listener class name.
-                for (Method method : type.getMethods()) {
-                    String name = method.getReturnType().getSimpleName();
+                for (var method : type.getMethods()) {
+                    var name = method.getReturnType().getSimpleName();
                     if (method.getParameterCount() == 0
                         && (name.equals("ServerConnectionListener") || name.equals("ServerConnection"))) {
                         return method;
@@ -156,15 +156,15 @@ final class SamePortZstdInjector implements AutoCloseable {
         }
 
         private static Field channelsField(Class<?> type) throws NoSuchFieldException {
-            for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            for (var current = type; current != null; current = current.getSuperclass()) {
                 try {
-                    Field field = current.getDeclaredField("channels");
+                    var field = current.getDeclaredField("channels");
                     if (List.class.isAssignableFrom(field.getType())) {
                         return field;
                     }
                 } catch (NoSuchFieldException ignored) {
                 }
-                for (Field field : current.getDeclaredFields()) {
+                for (var field : current.getDeclaredFields()) {
                     if (List.class.isAssignableFrom(field.getType())
                         && field.getGenericType().getTypeName().contains("io.netty.channel.ChannelFuture")) {
                         return field;

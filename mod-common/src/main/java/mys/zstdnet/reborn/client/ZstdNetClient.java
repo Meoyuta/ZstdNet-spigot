@@ -27,7 +27,7 @@ public final class ZstdNetClient {
     }
 
     public static ClientConfig config() {
-        ClientConfig current = config;
+        var current = config;
         if (current == null) {
             return ClientConfig.load(Path.of("config"));
         }
@@ -35,7 +35,7 @@ public final class ZstdNetClient {
     }
 
     public static ZstdNetLogger logger() {
-        ZstdNetLogger current = logger;
+        var current = logger;
         if (current != null) {
             return current;
         }
@@ -67,12 +67,12 @@ public final class ZstdNetClient {
     }
 
     public static ZstdDictionary receiveServerDictionary(long expectedId, byte[] bytes) throws IOException {
-        ZstdDictionaryStore store = dictionaryStore;
+        var store = dictionaryStore;
         if (store == null) {
             store = new ZstdDictionaryStore(Path.of("config", "zstdnet", "dictionary.zdict"), logger());
             dictionaryStore = store;
         }
-        ZstdDictionary dictionary = ZstdDictionary.fromBytes(bytes);
+        var dictionary = ZstdDictionary.fromBytes(bytes);
         if (dictionary.id() != expectedId) {
             throw new IOException("server dictionary id does not match its payload");
         }
@@ -85,7 +85,7 @@ public final class ZstdNetClient {
     }
 
     public static Path dictionaryPath() {
-        ZstdDictionaryStore store = dictionaryStore;
+        var store = dictionaryStore;
         if (store == null) {
             return Path.of("config", "zstdnet", "dictionary.zdict").toAbsolutePath().normalize();
         }

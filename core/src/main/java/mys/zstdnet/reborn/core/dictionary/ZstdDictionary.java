@@ -33,7 +33,7 @@ public final class ZstdDictionary {
             throw new IOException("dictionary size must be between " + MIN_BYTES + " and " + MAX_BYTES + " bytes");
         }
 
-        byte[] bytes = Arrays.copyOf(source, source.length);
+        var bytes = Arrays.copyOf(source, source.length);
         long id;
         try {
             id = Zstd.getDictIdFromDict(bytes);
@@ -45,8 +45,8 @@ public final class ZstdDictionary {
         }
         // Reading the ID alone does not validate the entropy tables.
         try {
-            byte[] probe = new byte[1024];
-            byte[] compressed = Zstd.compressUsingDict(probe, bytes, 1);
+            var probe = new byte[1024];
+            var compressed = Zstd.compressUsingDict(probe, bytes, 1);
             if (!Arrays.equals(probe, Zstd.decompress(compressed, bytes, probe.length))) {
                 throw new IOException("dictionary round-trip validation failed");
             }
@@ -71,7 +71,7 @@ public final class ZstdDictionary {
     public byte[] compress(byte[] raw, int level) {
         try {
             return Zstd.compress(raw, prepared.compressors.computeIfAbsent(
-                Math.max(1, Math.min(22, level)), n -> new ZstdDictCompress(bytes, n)));
+                Math.clamp(level, 1, 22), n -> new ZstdDictCompress(bytes, n)));
         } finally {
             Reference.reachabilityFence(this);
         }

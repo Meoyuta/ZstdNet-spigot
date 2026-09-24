@@ -106,7 +106,7 @@ final class ZstdCommands {
                 .then(Commands.argument("name", StringArgumentType.greedyString())
                     .executes(c -> {
                         try {
-                            Path named = mod.dictionaryStore().name(StringArgumentType.getString(c, "file"),
+                            var named = mod.dictionaryStore().name(StringArgumentType.getString(c, "file"),
                                 StringArgumentType.getString(c, "name"));
                             success(c.getSource(), "dictionary.named", named.getFileName().toString());
                             return 1;
@@ -174,7 +174,7 @@ final class ZstdCommands {
                     success(source, "dictionary.unloaded");
                 }
                 case "switch" -> {
-                    String path = argument.trim();
+                    var path = argument.trim();
                     if (path.length() >= 2 && path.startsWith("\"") && path.endsWith("\"")) {
                         path = path.substring(1, path.length() - 1);
                     }
@@ -204,7 +204,7 @@ final class ZstdCommands {
                         path = path.substring(1, path.length() - 1).trim();
                     }
                     if (path.isEmpty()) return fail(source, "dictionary.invalid_path");
-                    Path file = Path.of(path);
+                    var file = Path.of(path);
                     if (!file.isAbsolute()) file = store.dictionaryPath().getParent().resolve(file);
                     trainer.abort();
                     var dictionary = store.importFrom(file);
@@ -212,7 +212,7 @@ final class ZstdCommands {
                 }
                 case "export" -> {
                     if (store.dictionary() == null) return fail(source, "dictionary.no_dictionary");
-                    String path = store.export().toString();
+                    var path = store.export().toString();
                     success(source, "dictionary.exported");
                     source.sendSuccess(() -> text("dictionary.export_path", path).copy().withStyle(style -> style
                         .withColor(ChatFormatting.AQUA).withUnderlined(true)
@@ -224,7 +224,7 @@ final class ZstdCommands {
                 default -> {
                     var state = trainer.status();
                     var dictionary = store.dictionary();
-                    Component description = dictionary == null ? text("dictionary.none")
+                    var description = dictionary == null ? text("dictionary.none")
                         : text("dictionary.description", Long.toUnsignedString(dictionary.id()), dictionary.size());
                     success(source, "dictionary.status", description, trainingState(state),
                         state.sampleCount(), state.sampleBytes(), state.remainingMillis() / 1000);
@@ -242,7 +242,7 @@ final class ZstdCommands {
     private static Component trainingState(ZstdDictionaryTrainer.Status state) {
         if (state.finalizing()) return text("dictionary.state.training");
         if (state.training()) return text("dictionary.state.collecting");
-        String result = state.result();
+        var result = state.result();
         if (result.startsWith("saved dictionary ")) {
             return text("dictionary.state.saved", result.substring("saved dictionary ".length()));
         }

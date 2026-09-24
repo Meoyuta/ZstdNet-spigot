@@ -7,13 +7,13 @@ public final class ByteArrayOps {
     }
 
     public static byte[] concat(byte[]... arrays) {
-        int total = 0;
-        for (byte[] array : arrays) {
+        var total = 0;
+        for (var array : arrays) {
             total += array.length;
         }
-        byte[] out = new byte[total];
-        int offset = 0;
-        for (byte[] array : arrays) {
+        var out = new byte[total];
+        var offset = 0;
+        for (var array : arrays) {
             System.arraycopy(array, 0, out, offset, array.length);
             offset += array.length;
         }

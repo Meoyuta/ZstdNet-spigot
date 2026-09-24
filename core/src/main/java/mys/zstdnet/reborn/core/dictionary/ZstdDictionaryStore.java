@@ -23,7 +23,7 @@ public final class ZstdDictionaryStore {
     public synchronized void enableNaming() throws IOException {
         namingEnabled = true;
         pending.clear();
-        Path metadata = dictionaryPath.resolveSibling("dictionary-naming.properties");
+        var metadata = dictionaryPath.resolveSibling("dictionary-naming.properties");
         if (Files.isRegularFile(metadata)) {
             try (var input = Files.newInputStream(metadata)) { pending.load(input); }
         }
@@ -37,9 +37,9 @@ public final class ZstdDictionaryStore {
     }
 
     private void persistPending() throws IOException {
-        Path metadata = dictionaryPath.resolveSibling("dictionary-naming.properties");
+        var metadata = dictionaryPath.resolveSibling("dictionary-naming.properties");
         Files.createDirectories(metadata.getParent());
-        Path temporary = metadata.resolveSibling(metadata.getFileName() + ".tmp");
+        var temporary = metadata.resolveSibling(metadata.getFileName() + ".tmp");
         try (var output = Files.newOutputStream(temporary)) { pending.store(output, "Dictionary naming deadlines; 0 = shutdown dictionary"); }
         Files.move(temporary, metadata, StandardCopyOption.REPLACE_EXISTING);
     }
@@ -55,10 +55,10 @@ public final class ZstdDictionaryStore {
         if (name.isBlank() || name.length() > 100 || name.equals(".") || name.equals("..")
             || name.chars().anyMatch(c -> c < 32 || "<>:\"/\\|?*".indexOf(c) >= 0)
             || name.endsWith(".") || name.endsWith(" ")) throw new IOException("Invalid dictionary name");
-        Path source = dictionaryPath.resolveSibling(file);
-        Path target = dictionaryPath.resolveSibling(name + ".zdict");
+        var source = dictionaryPath.resolveSibling(file);
+        var target = dictionaryPath.resolveSibling(name + ".zdict");
         if (Files.exists(target)) throw new IOException("Dictionary name already exists");
-        ZstdDictionary instance = pendingInstances.get(file);
+        var instance = pendingInstances.get(file);
         if (instance == null) instance = source.equals(selectedPath) && dictionary != null
             ? dictionary : ZstdDictionary.fromBytes(readBounded(source));
         Files.move(source, target);
@@ -80,7 +80,7 @@ public final class ZstdDictionaryStore {
     public synchronized java.util.List<String> expireNames(long now) throws IOException {
         var applied = new java.util.ArrayList<String>();
         for (String file : pendingNames()) {
-            long deadline = Long.parseLong(pending.getProperty(file));
+            var deadline = Long.parseLong(pending.getProperty(file));
             if (deadline > 0 && now >= deadline) {
                 applied.add(name(file, "untitled_" + timestamp()).getFileName().toString());
             }
@@ -105,7 +105,7 @@ public final class ZstdDictionaryStore {
 
     public java.util.List<String> available() throws IOException {
         var files = new java.util.TreeSet<String>();
-        Path base = dictionaryPath.getParent();
+        var base = dictionaryPath.getParent();
         if (base != null && Files.isDirectory(base)) {
             try (var stream = Files.walk(base)) {
                 stream.filter(Files::isRegularFile)
@@ -118,10 +118,10 @@ public final class ZstdDictionaryStore {
 
     public synchronized boolean loadSelected() {
         managesSelection = true;
-        Path selection = dictionaryPath.resolveSibling("dictionary-selection.txt");
+        var selection = dictionaryPath.resolveSibling("dictionary-selection.txt");
         try {
             if (Files.isRegularFile(selection)) {
-                String value = Files.readString(selection).trim();
+                var value = Files.readString(selection).trim();
                 if (value.equals("none")) {
                     dictionary = null;
                     selectedPath = null;
@@ -135,7 +135,7 @@ public final class ZstdDictionaryStore {
                 select(dictionaryPath);
                 return true;
             }
-            for (String candidate : available()) {
+            for (var candidate : available()) {
                 try {
                     select(Path.of(candidate));
                     return true;
@@ -151,9 +151,9 @@ public final class ZstdDictionaryStore {
     }
 
     public synchronized ZstdDictionary select(Path path) throws IOException {
-        Path file = path.isAbsolute() ? path : dictionaryPath.getParent().resolve(path);
+        var file = path.isAbsolute() ? path : dictionaryPath.getParent().resolve(path);
         file = file.toAbsolutePath().normalize();
-        ZstdDictionary next = pendingInstances.get(file.getFileName().toString());
+        var next = pendingInstances.get(file.getFileName().toString());
         if (next == null) next = file.equals(selectedPath) && dictionary != null
             ? dictionary : ZstdDictionary.fromBytes(readBounded(file));
         persistSelection(file.toString());
@@ -171,9 +171,9 @@ public final class ZstdDictionaryStore {
     }
 
     private void persistSelection(String value) throws IOException {
-        Path selection = dictionaryPath.resolveSibling("dictionary-selection.txt");
+        var selection = dictionaryPath.resolveSibling("dictionary-selection.txt");
         Files.createDirectories(selection.getParent());
-        Path temporary = selection.resolveSibling(selection.getFileName() + ".tmp");
+        var temporary = selection.resolveSibling(selection.getFileName() + ".tmp");
         Files.writeString(temporary, value);
         try {
             Files.move(temporary, selection, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -258,7 +258,7 @@ public final class ZstdDictionaryStore {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Path temporary = dictionaryPath.resolveSibling(dictionaryPath.getFileName() + ".tmp");
+            var temporary = dictionaryPath.resolveSibling(dictionaryPath.getFileName() + ".tmp");
         Files.write(temporary, bytes);
         try {
             Files.move(temporary, dictionaryPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);

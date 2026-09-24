@@ -1,8 +1,6 @@
 package mys.zstdnet.reborn.client;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -18,15 +16,15 @@ public final class ClientConfig {
 
     private ClientConfig(boolean enabled, int compressionLevel, Set<String> servers) {
         this.enabled = enabled;
-        this.compressionLevel = Math.max(1, Math.min(22, compressionLevel));
+        this.compressionLevel = Math.clamp(compressionLevel, 1, 22);
         this.servers = servers;
     }
 
     public static ClientConfig load(Path configDir) {
-        Path path = configDir.resolve("zstdnet-client.properties");
-        Properties props = new Properties();
+        var path = configDir.resolve("zstdnet-client.properties");
+        var props = new Properties();
         if (Files.exists(path)) {
-            try (InputStream in = Files.newInputStream(path)) {
+            try (var in = Files.newInputStream(path)) {
                 props.load(in);
             } catch (IOException ignored) {
             }
@@ -36,20 +34,20 @@ public final class ClientConfig {
             props.setProperty("servers", "*");
             try {
                 Files.createDirectories(configDir);
-                try (OutputStream out = Files.newOutputStream(path)) {
+                try (var out = Files.newOutputStream(path)) {
                     props.store(out, "ZstdNet client configuration");
                 }
             } catch (IOException ignored) {
             }
         }
 
-        Set<String> servers = Arrays.stream(props.getProperty("servers", "*").split(","))
+        var servers = Arrays.stream(props.getProperty("servers", "*").split(","))
             .map(String::trim)
             .filter(s -> !s.isEmpty())
             .map(s -> s.toLowerCase(Locale.ROOT))
             .collect(Collectors.toUnmodifiableSet());
 
-        int level = parseInt(props.getProperty("compression-level"), 9);
+        var level = parseInt(props.getProperty("compression-level"));
         return new ClientConfig(Boolean.parseBoolean(props.getProperty("enabled", "true")), level, servers);
     }
 
@@ -60,7 +58,7 @@ public final class ClientConfig {
         if (servers.contains("*")) {
             return true;
         }
-        String normalizedHost = host.toLowerCase(Locale.ROOT);
+        var normalizedHost = host.toLowerCase(Locale.ROOT);
         return servers.contains(normalizedHost) || servers.contains(normalizedHost + ":" + port);
     }
 
@@ -68,11 +66,11 @@ public final class ClientConfig {
         return compressionLevel;
     }
 
-    private static int parseInt(String raw, int fallback) {
+    private static int parseInt(String raw) {
         try {
             return Integer.parseInt(raw);
         } catch (NumberFormatException e) {
-            return fallback;
+            return 9;
         }
     }
 }

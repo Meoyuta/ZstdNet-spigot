@@ -8,3 +8,4 @@ target/
 server_log.txt
 .idea/
 .codex/
+/memory.md

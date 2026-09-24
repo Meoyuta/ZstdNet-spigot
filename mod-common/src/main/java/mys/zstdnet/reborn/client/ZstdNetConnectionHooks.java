@@ -3,7 +3,6 @@ package mys.zstdnet.reborn.client;
 import mys.zstdnet.reborn.core.netty.ZstdFrameStats;
 import mys.zstdnet.reborn.core.netty.ZstdDictionarySession;
 import mys.zstdnet.reborn.core.netty.ZstdNettyPipeline;
-import mys.zstdnet.reborn.core.utils.ZstdNetLogger;
 import io.netty.channel.ChannelPipeline;
 
 import java.util.Locale;
@@ -22,13 +21,13 @@ public final class ZstdNetConnectionHooks {
             return false;
         }
 
-        ClientConfig config = ZstdNetClient.config();
+        var config = ZstdNetClient.config();
         if (!config.enabledFor(host, port)) {
             PENDING.set(null);
             return false;
         }
 
-        PendingConnection pending = new PendingConnection(
+        var pending = new PendingConnection(
             host.toLowerCase(Locale.ROOT),
             port,
             config.compressionLevel(),
@@ -40,7 +39,7 @@ public final class ZstdNetConnectionHooks {
     }
 
     public static void install(ChannelPipeline pipeline) {
-        PendingConnection pending = PENDING.getAndSet(null);
+        var pending = PENDING.getAndSet(null);
         if (pending == null || pending.expired()) {
             return;
         }
@@ -63,7 +62,7 @@ public final class ZstdNetConnectionHooks {
         try {
             ZstdNettyPipeline.reposition(pipeline);
         } catch (RuntimeException e) {
-            ZstdNetLogger logger = ZstdNetClient.logger();
+            var logger = ZstdNetClient.logger();
             logger.warn("failed to reposition ZstdNet pipeline: " + e);
         }
     }

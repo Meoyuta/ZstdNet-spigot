@@ -1,7 +1,5 @@
 package mys.zstdnet.reborn.spigot;
 
-import mys.zstdnet.reborn.core.ZstdNetConfig;
-import mys.zstdnet.reborn.core.stats.TrafficStats;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -28,7 +26,7 @@ final class ZstdNetCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        String sub = args.length == 0 ? "status" : args[0].toLowerCase(Locale.ROOT);
+        var sub = args.length == 0 ? "status" : args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "status" -> sendStatus(sender);
             case "reload" -> sender.sendMessage(plugin.reloadProxy()
@@ -82,18 +80,18 @@ final class ZstdNetCommand implements CommandExecutor, TabCompleter {
         if (plugin.isSetupPendingRestart()) {
             sender.sendMessage(ChatColor.YELLOW + "Setup pending restart: restart the server before starting the utils.");
         }
-        ZstdNetConfig config = plugin.activeConfig();
+        var config = plugin.activeConfig();
         if (config != null) {
             sender.sendMessage(ChatColor.GRAY + "Listen: " + config.listen() + " -> target: " + config.target());
         } else {
-            ZstdNetConfig configured = plugin.configuredConfig();
+            var configured = plugin.configuredConfig();
             sender.sendMessage(ChatColor.GRAY + "Configured: " + configured.listen() + " -> target: " + configured.target());
         }
-        int serverPort = plugin.currentServerPort();
+        var serverPort = plugin.currentServerPort();
         if (serverPort > 0) {
             sender.sendMessage(ChatColor.GRAY + "server.properties server-port: " + serverPort);
         }
-        TrafficStats.Snapshot stats = plugin.proxyStats();
+        var stats = plugin.proxyStats();
         if (stats != null) {
             sender.sendMessage(ChatColor.GRAY + String.format(
                 Locale.ROOT,
@@ -114,8 +112,8 @@ final class ZstdNetCommand implements CommandExecutor, TabCompleter {
         if (args.length != 1 || !sender.hasPermission("zstdnet.admin")) {
             return List.of();
         }
-        String prefix = args[0].toLowerCase(Locale.ROOT);
-        List<String> matches = new ArrayList<>();
+        var prefix = args[0].toLowerCase(Locale.ROOT);
+        var matches = new ArrayList<String>();
         for (String subcommand : SUBCOMMANDS) {
             if (subcommand.startsWith(prefix)) {
                 matches.add(subcommand);

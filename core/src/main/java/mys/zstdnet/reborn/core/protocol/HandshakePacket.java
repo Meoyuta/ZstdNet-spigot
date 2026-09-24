@@ -7,36 +7,35 @@ public record HandshakePacket(int protocolVersion, String host, int port, int ne
     public static final int LOGIN = 2;
 
     public static HandshakePacket parse(byte[] payload) {
-        VarIntRead packetId = VarIntCodec.read(payload, 0);
+        var packetId = VarIntCodec.read(payload, 0);
         if (packetId == null || packetId.value() != 0) {
             return null;
         }
 
-        VarIntRead protocol = VarIntCodec.read(payload, packetId.next());
+        var protocol = VarIntCodec.read(payload, packetId.next());
         if (protocol == null) {
             return null;
         }
 
-        VarIntRead hostLength = VarIntCodec.read(payload, protocol.next());
+        var hostLength = VarIntCodec.read(payload, protocol.next());
         if (hostLength == null || hostLength.value() < 0) {
             return null;
         }
 
-        int hostStart = hostLength.next();
-        int hostEnd = hostStart + hostLength.value();
-        int portStart = hostEnd;
-        int portEnd = portStart + 2;
+        var hostStart = hostLength.next();
+        var portStart = hostStart + hostLength.value();
+        var portEnd = portStart + 2;
         if (portEnd > payload.length) {
             return null;
         }
 
-        VarIntRead nextState = VarIntCodec.read(payload, portEnd);
+        var nextState = VarIntCodec.read(payload, portEnd);
         if (nextState == null) {
             return null;
         }
 
-        int port = ((payload[portStart] & 0xFF) << 8) | (payload[portStart + 1] & 0xFF);
-        String host = new String(payload, hostStart, hostLength.value(), StandardCharsets.UTF_8);
+        var port = ((payload[portStart] & 0xFF) << 8) | (payload[portStart + 1] & 0xFF);
+        var host = new String(payload, hostStart, hostLength.value(), StandardCharsets.UTF_8);
         return new HandshakePacket(protocol.value(), host, port, nextState.value());
     }
 
@@ -60,15 +59,14 @@ public record HandshakePacket(int protocolVersion, String host, int port, int ne
             return payload;
         }
 
-        int hostStart = hostLength.next();
-        int hostEnd = hostStart + hostLength.value();
-        int portEnd = hostEnd + 2;
+        var hostStart = hostLength.next();
+        var portEnd = hostStart + hostLength.value() + 2;
         if (portEnd > payload.length) {
             return payload;
         }
 
-        String originalHost = new String(payload, hostStart, hostLength.value(), StandardCharsets.UTF_8);
-        byte[] hostBytes = (host + suffix(originalHost)).getBytes(StandardCharsets.UTF_8);
+        var originalHost = new String(payload, hostStart, hostLength.value(), StandardCharsets.UTF_8);
+        var hostBytes = (host + suffix(originalHost)).getBytes(StandardCharsets.UTF_8);
         return ByteArrayOps.concat(
             ByteArrayOps.slice(payload, 0, protocol.next()),
             VarIntCodec.encode(hostBytes.length),

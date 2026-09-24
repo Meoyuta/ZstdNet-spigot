@@ -93,9 +93,9 @@ final class SamePortZstdInjector implements AutoCloseable {
     }
 
     private List<Channel> serverChannels() {
-        ServerConnectionListener connectionListener = minecraftServer.getConnection();
-        List<Channel> channels = new ArrayList<>();
-        for (ChannelFuture future : channelFutures(connectionListener)) {
+        var connectionListener = minecraftServer.getConnection();
+        var channels = new ArrayList<Channel>();
+        for (var future : channelFutures(connectionListener)) {
             if (future != null && future.channel() != null) {
                 channels.add(future.channel());
             }

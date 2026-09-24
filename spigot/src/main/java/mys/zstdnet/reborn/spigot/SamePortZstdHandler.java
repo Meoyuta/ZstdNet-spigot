@@ -75,7 +75,7 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
             return;
         }
 
-        Boolean rawLogin = isRawLogin(in);
+        var rawLogin = isRawLogin(in);
         if (rawLogin == null) {
             return;
         }
@@ -118,7 +118,7 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
     }
 
     private void countConnection(ChannelHandlerContext ctx) {
-        AtomicBoolean active = new AtomicBoolean(true);
+        var active = new AtomicBoolean(true);
         stats.addConnection(1);
         ctx.channel().closeFuture().addListener(future -> {
             if (active.compareAndSet(true, false)) {
@@ -167,8 +167,8 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
     }
 
     private Boolean isRawLogin(ByteBuf in) throws IOException {
-        int start = in.readerIndex();
-        Integer length = readVarInt(in);
+        var start = in.readerIndex();
+        var length = readVarInt(in);
         if (length == null) {
             in.readerIndex(start);
             return null;
@@ -182,21 +182,21 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
             return null;
         }
 
-        byte[] payload = new byte[length];
+        var payload = new byte[length];
         in.readBytes(payload);
         in.readerIndex(start);
-        HandshakePacket handshake = HandshakePacket.parse(payload);
+        var handshake = HandshakePacket.parse(payload);
         return handshake != null && handshake.nextState() == HandshakePacket.LOGIN;
     }
 
     private static Integer readVarInt(ByteBuf in) throws IOException {
-        int value = 0;
-        int shift = 0;
-        for (int i = 0; i < 5; i++) {
+        var value = 0;
+        var shift = 0;
+        for (var i = 0; i < 5; i++) {
             if (!in.isReadable()) {
                 return null;
             }
-            int b = in.readUnsignedByte();
+            var b = in.readUnsignedByte();
             value |= (b & 0x7F) << shift;
             if ((b & 0x80) == 0) {
                 return value;
@@ -207,11 +207,11 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
     }
 
     private static byte[] loginDisconnectPacket(String message) {
-        String escaped = (message == null ? "ZstdNet required" : message)
+        var escaped = (message == null ? "ZstdNet required" : message)
             .replace("\\", "\\\\")
             .replace("\"", "\\\"");
-        byte[] json = ("{\"text\":\"" + escaped + "\"}").getBytes(StandardCharsets.UTF_8);
-        byte[] payload = ByteArrayOps.concat(
+        var json = ("{\"text\":\"" + escaped + "\"}").getBytes(StandardCharsets.UTF_8);
+        var payload = ByteArrayOps.concat(
             VarIntCodec.encode(0),
             VarIntCodec.encode(json.length),
             json

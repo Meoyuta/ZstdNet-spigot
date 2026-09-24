@@ -6,6 +6,7 @@
         <entry key="0">
           <value>
             <TabSessionState>
+              <option name="projectPath" value="G:\Claude Code\ZstdNet" />
               <option name="provider" value="codex" />
               <option name="cwd" value="G:\Claude Code\ZstdNet" />
               <option name="model" value="gpt-5.6-terra" />

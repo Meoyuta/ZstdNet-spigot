@@ -25,7 +25,7 @@ final class DictionaryDownloadScreen extends ProgressScreen {
     public void tick() {
         previous.tick();
         ticks++;
-        Minecraft client = Minecraft.getInstance();
+        var client = Minecraft.getInstance();
         if (finished && ticks >= 10 && client.screen == this) client.setScreen(previous);
     }
 
@@ -46,7 +46,7 @@ final class DictionaryDownloadScreen extends ProgressScreen {
             public void started(long id, int bytes) {
                 LOGGER.info("Receiving server dictionary id={} bytes={}", Long.toUnsignedString(id), bytes);
                 Minecraft.getInstance().execute(() -> {
-                    Minecraft client = Minecraft.getInstance();
+                    var client = Minecraft.getInstance();
                     if (client.player == null && client.screen != null
                         && !(client.screen instanceof DisconnectedScreen)) {
                         screen = new DictionaryDownloadScreen(client.screen);
@@ -85,7 +85,7 @@ final class DictionaryDownloadScreen extends ProgressScreen {
 
             private void restore() {
                 Minecraft.getInstance().execute(() -> {
-                    Minecraft client = Minecraft.getInstance();
+                    var client = Minecraft.getInstance();
                     if (screen != null && client.screen == screen) client.setScreen(screen.previous);
                     screen = null;
                 });

@@ -85,7 +85,7 @@ public final class ZstdDictionarySession {
         if (dictionaryBytes < ZstdDictionary.MIN_BYTES || dictionaryBytes > ZstdDictionary.MAX_BYTES) {
             return;
         }
-        int downloaded = Math.max(0, Math.min(dictionaryBytes, in.writerIndex() - payloadStart - CONTROL_HEADER_BYTES));
+        var downloaded = Math.clamp(dictionaryBytes, 0, in.writerIndex() - payloadStart - CONTROL_HEADER_BYTES);
         synchronized (this) {
             if (!announcedDownload) {
                 announcedDownload = true;

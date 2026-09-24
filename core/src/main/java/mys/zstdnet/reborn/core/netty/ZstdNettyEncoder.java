@@ -26,7 +26,7 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
     }
 
     ZstdNettyEncoder copyForMove() {
-        ZstdNettyEncoder copy = new ZstdNettyEncoder(level, sendMagic, stats, dictionarySession);
+        var copy = new ZstdNettyEncoder(level, sendMagic, stats, dictionarySession);
         copy.magicSent = magicSent;
         copy.streamHeaderSent = streamHeaderSent;
         return copy;
@@ -34,12 +34,12 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
 
     @Override
     protected void encode(io.netty.channel.ChannelHandlerContext ctx, ByteBuf msg, ByteBuf out) throws Exception {
-        int readable = msg.readableBytes();
+        var readable = msg.readableBytes();
         if (readable <= 0 && (dictionarySession == null || !dictionarySession.hasPendingControl())) {
             return;
         }
 
-        int wireBytes = 0;
+        var wireBytes = 0;
         if (sendMagic && !magicSent) {
             out.writeBytes(ZstdFrameCodec.MAGIC);
             wireBytes += ZstdFrameCodec.MAGIC.length;
@@ -53,7 +53,7 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
         if (dictionarySession != null) {
             byte[] control;
             while ((control = dictionarySession.pollOutboundControl()) != null) {
-                byte[] record = controlRecord(control);
+                var record = controlRecord(control);
                 out.writeBytes(record);
                 wireBytes += record.length;
             }
@@ -62,11 +62,11 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
             stats.outbound(0, wireBytes);
             return;
         }
-        byte[] raw = ByteBufUtil.getBytes(msg, msg.readerIndex(), readable, false);
+        var raw = ByteBufUtil.getBytes(msg, msg.readerIndex(), readable, false);
         mys.zstdnet.reborn.core.dictionary.ZstdDictionary dictionary = dictionarySession == null
             ? null
             : dictionarySession.activeDictionary();
-        byte[] frame = ZstdFrameCodec.compressFrame(raw, level, dictionary);
+        var frame = ZstdFrameCodec.compressFrame(raw, level, dictionary);
         wireBytes += frame.length;
         out.writeBytes(frame);
         stats.outbound(raw.length, wireBytes);
@@ -74,7 +74,7 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
     }
 
     private static byte[] controlRecord(byte[] control) throws java.io.IOException {
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(control.length + 10);
+        var out = new java.io.ByteArrayOutputStream(control.length + 10);
         out.write(VarIntCodec.encode(0));
         out.write(VarIntCodec.encode(control.length << 1));
         out.write(control);

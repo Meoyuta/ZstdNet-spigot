@@ -12,7 +12,7 @@ class DictionaryLifecycleTest {
         store.enableNaming();
         var saved = store.save(DictionaryFixtures.dictionary().bytes());
         assertNull(store.dictionary());
-        String pending = store.pendingNames().getFirst();
+        var pending = store.pendingNames().getFirst();
         store.name(pending, "my_dictionary");
         assertSame(saved, store.dictionary());
         assertTrue(store.pendingNames().isEmpty());
@@ -32,7 +32,7 @@ class DictionaryLifecycleTest {
         restarted.enableNaming();
         assertTrue(restarted.loadSelected());
         var selected = restarted.dictionary();
-        String file = restarted.pendingNames().getFirst();
+        var file = restarted.pendingNames().getFirst();
         assertTrue(file.startsWith("temp_"));
         assertTrue(restarted.expireNames(Long.MAX_VALUE).isEmpty());
         restarted.name(file, "after_restart");
@@ -45,22 +45,22 @@ class DictionaryLifecycleTest {
         var original = DictionaryFixtures.dictionary();
         var store = new ZstdDictionaryStore(directory.resolve("config/dictionary.zdict"), DictionaryFixtures.LOGGER);
         store.save(original.bytes());
-        Path exported = store.export();
+        var exported = store.export();
         assertArrayEquals(original.bytes(), Files.readAllBytes(exported));
         var imported = new ZstdDictionaryStore(directory.resolve("other/dictionary.zdict"), DictionaryFixtures.LOGGER);
         imported.importFrom(exported);
         assertTrue(imported.load());
         assertArrayEquals(original.bytes(), imported.dictionary().bytes());
-        Path invalid = directory.resolve("invalid.zdict");
+        var invalid = directory.resolve("invalid.zdict");
         Files.write(invalid, new byte[300]);
         assertThrows(java.io.IOException.class, () -> imported.importFrom(invalid));
         assertArrayEquals(original.bytes(), imported.dictionary().bytes());
-        byte[] corruptTables = new byte[300];
+        var corruptTables = new byte[300];
         System.arraycopy(original.bytes(), 0, corruptTables, 0, 8);
         assertThrows(java.io.IOException.class, () -> ZstdDictionary.fromBytes(corruptTables));
     }
 
-    @Test void trainingFinalizesAndReportsResult() throws Exception {
+    @Test void trainingFinalizesAndReportsResult() {
         var store = new ZstdDictionaryStore(directory.resolve("dictionary.zdict"), DictionaryFixtures.LOGGER);
         try (var trainer = new ZstdDictionaryTrainer(store, DictionaryFixtures.LOGGER)) {
             assertTrue(trainer.start(null, 3));
@@ -69,15 +69,14 @@ class DictionaryLifecycleTest {
             for (byte[] sample : DictionaryFixtures.samples()) trainer.capture(sample);
             assertEquals(300, trainer.status().sampleCount());
             assertTrue(trainer.stopAndFinalize());
-            long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
-            while (trainer.status().training() && System.nanoTime() < deadline) Thread.sleep(10);
+            trainer.finishAndClose();
             assertFalse(trainer.status().training());
             assertNotNull(store.dictionary(), trainer.status().result());
             assertTrue(Files.exists(store.dictionaryPath()));
         }
     }
 
-    @Test void shutdownFinalizesCollectionAndCannotRestart() throws Exception {
+    @Test void shutdownFinalizesCollectionAndCannotRestart() {
         var store = new ZstdDictionaryStore(directory.resolve("dictionary.zdict"), DictionaryFixtures.LOGGER);
         var trainer = new ZstdDictionaryTrainer(store, DictionaryFixtures.LOGGER);
         assertTrue(trainer.start(Duration.ofMinutes(10), 3));
@@ -109,8 +108,7 @@ class DictionaryLifecycleTest {
             trainer.start(Duration.ofMinutes(1), 3);
             trainer.capture(new byte[]{1});
             trainer.stopAndFinalize();
-            long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
-            while (trainer.status().training() && System.nanoTime() < deadline) Thread.sleep(10);
+            trainer.finishAndClose();
             assertFalse(trainer.status().training());
             assertTrue(trainer.status().result().startsWith("failed:"));
             assertSame(dictionary, store.dictionary());

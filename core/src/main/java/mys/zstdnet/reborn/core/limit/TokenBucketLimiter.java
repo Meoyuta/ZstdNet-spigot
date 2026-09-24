@@ -26,8 +26,8 @@ public final class TokenBucketLimiter {
         }
         refill();
         while (tokens < bytes) {
-            double missing = bytes - tokens;
-            long sleepMillis = Math.max(1L, (long) Math.ceil(missing * 1000.0D / rateBytesPerSecond));
+            var missing = bytes - tokens;
+            var sleepMillis = Math.max(1L, (long) Math.ceil(missing * 1000.0D / rateBytesPerSecond));
             try {
                 wait(sleepMillis);
             } catch (InterruptedException e) {
@@ -40,8 +40,8 @@ public final class TokenBucketLimiter {
     }
 
     private void refill() {
-        long now = System.nanoTime();
-        long elapsed = now - lastNanos;
+        var now = System.nanoTime();
+        var elapsed = now - lastNanos;
         if (elapsed <= 0L) {
             return;
         }

@@ -6,8 +6,6 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
 
-import java.util.List;
-
 public final class ZstdNettyPipeline {
     public static final String INBOUND_HANDLER = "zstdnet-inbound";
     public static final String OUTBOUND_HANDLER = "zstdnet-outbound";
@@ -87,26 +85,26 @@ public final class ZstdNettyPipeline {
     }
 
     private static void moveAfter(ChannelPipeline pipeline, String name, String baseName) {
-        List<String> names = pipeline.names();
-        int current = names.indexOf(name);
-        int base = names.indexOf(baseName);
+        var names = pipeline.names();
+        var current = names.indexOf(name);
+        var base = names.indexOf(baseName);
         if (current < 0 || base < 0 || current == base + 1) {
             return;
         }
 
-        ChannelHandler handler = copyForMove(pipeline.remove(name));
+        var handler = copyForMove(pipeline.remove(name));
         pipeline.addAfter(baseName, name, handler);
     }
 
     private static void moveBefore(ChannelPipeline pipeline, String name, String baseName) {
-        List<String> names = pipeline.names();
-        int current = names.indexOf(name);
-        int base = names.indexOf(baseName);
+        var names = pipeline.names();
+        var current = names.indexOf(name);
+        var base = names.indexOf(baseName);
         if (current < 0 || base < 0 || current == base - 1) {
             return;
         }
 
-        ChannelHandler handler = copyForMove(pipeline.remove(name));
+        var handler = copyForMove(pipeline.remove(name));
         pipeline.addBefore(baseName, name, handler);
     }
 
