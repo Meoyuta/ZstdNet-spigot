@@ -9,6 +9,8 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class ZstdNettyPipelineTest {
@@ -69,6 +71,32 @@ class ZstdNettyPipelineTest {
             encoded.release();
             encoder.finishAndReleaseAll();
         }
+    }
+
+    @Test
+    void encoderReadsCompressionLevelForEachExistingConnectionWrite() {
+        var level = new AtomicInteger(1);
+        var calls = new AtomicInteger();
+        var encoder = new EmbeddedChannel(new ZstdNettyEncoder(
+            () -> {
+                calls.incrementAndGet();
+                return level.get();
+            },
+            false,
+            ZstdFrameStats.NONE,
+            null
+        ));
+        var raw = new byte[4096];
+        java.util.Arrays.fill(raw, (byte) 'z');
+        assertTrue(encoder.writeOutbound(Unpooled.wrappedBuffer(raw)));
+        ByteBuf first = encoder.readOutbound();
+        first.release();
+        level.set(22);
+        assertTrue(encoder.writeOutbound(Unpooled.wrappedBuffer(raw)));
+        ByteBuf second = encoder.readOutbound();
+        second.release();
+        assertEquals(2, calls.get(), "the live level supplier must be queried for every frame");
+        encoder.finishAndReleaseAll();
     }
 
     @Test

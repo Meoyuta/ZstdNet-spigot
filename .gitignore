@@ -5,7 +5,8 @@ target/
 */build/
 
 *.log
-server_log.txt
 .idea/
 .codex/
 /memory.md
+/plan.md
+/decompiled/

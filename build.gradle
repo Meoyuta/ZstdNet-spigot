@@ -25,5 +25,11 @@ subprojects {
 
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
+        ["enabled", "levels", "corpus", "rounds", "warmups", "bandwidthMbps"].each { name ->
+            def propertyName = "zstdnet.benchmark.${name}"
+            if (System.getProperty(propertyName) != null) {
+                systemProperty(propertyName, System.getProperty(propertyName))
+            }
+        }
     }
 }

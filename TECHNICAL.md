@@ -4,46 +4,123 @@ This document describes the current implementation. The Chinese version follows 
 
 ## English
 
-### Modules
+### Modules and variants
 
-- `core` contains the wire protocol, Netty codecs, traffic statistics, and dictionary storage, training, and synchronization.
-- `mod-common` contains client configuration, connection selection, and shared client hooks.
-- `fabric` and `neoforge` provide loader entry points and Minecraft mixins. NeoForge 1.21.1 additionally includes the dedicated-server implementation; newer NeoForge builds are client-only.
-- `spigot` injects handlers into the existing Minecraft server listener and does not open a second listening port.
+- core contains the frame protocol, Netty codecs, traffic statistics, compression benchmark, dictionary storage,
+  training, and synchronization.
+- mod-common contains shared client configuration, connection selection, dictionary caching, and client hooks.
+- fabric provides Fabric client entry points for 1.21.11 and 26.1.
+- neoforge/src/1_21_1 contains the NeoForge 1.21.1 server-client implementation, including commands, payloads, status
+  screens, dictionary transfer, and same-port injection.
+- neoforge/src/1_21_11 and neoforge/src/26_1 contain newer NeoForge client-only entry points.
+- spigot injects handlers into the existing Minecraft listener without opening another port.
 
-### Connection and pipeline
+### Connection and wire format
 
-The client checks `enabled` and `servers` in `config/zstdnet-client.properties` while a connection is started. It keeps the original server address and marks the pending connection for up to 15 seconds. When Minecraft configures the channel, a Mixin installs the shared Netty codec. The inbound codec is placed after AES decryption and before Minecraft packet splitting; outbound encoding is placed before AES encryption and after packet framing. The pipeline is repositioned when Minecraft enables encryption.
+The client reads config/zstdnet-client.properties and marks a pending connection for up to 15 seconds. The shared Netty
+codec is installed after AES decryption and before packet splitting for inbound traffic, and before AES encryption and
+after packet framing for outbound traffic. Server detectors recognize the Zstandard frame magic and protocol version,
+install the ZstdNet pipeline, and suppress vanilla compression negotiation. Raw status pings pass through; raw logins
+receive the configured rejection message.
 
-On the server, an accept handler adds a per-connection detector to each accepted channel. The detector recognizes the Zstandard frame magic used to begin a ZstdNet stream, then validates the one-byte protocol version. ZstdNet traffic receives the codec pipeline, and vanilla login compression negotiation is suppressed for that connection. A raw Minecraft status ping is passed through; a raw login is rejected with the configured message. Spigot discovers the existing listener channels through cached MethodHandles; the NeoForge 1.21.1 implementation uses its server listener directly.
+Each data frame contains the uncompressed length and a stored tag as VarInts followed by the payload. A zero tag stores
+raw payload. Otherwise the tag stores encoded length shifted left by one, with the low bit indicating dictionary
+compression. Compression is used only if the complete encoded frame is smaller. Frames are limited to 8 MiB. An
+uncompressed length of zero denotes a control record for dictionary offers and acknowledgements. Dictionary streams use
+protocol version 1.
 
-### Wire format
+### Compression level and benchmark
 
-Each data frame contains two VarInts followed by its payload: the uncompressed length, then a stored tag. A zero tag means the payload is uncompressed; otherwise the tag stores the payload length shifted left by one, with the low bit indicating dictionary compression. Compression is used only when the complete encoded frame is smaller than the raw payload. Frames are limited to 8 MiB. A zero uncompressed length denotes a control record, currently used for dictionary offers and acknowledgements. Dictionary-enabled streams begin with protocol version `1`.
+The server owns a shared compression-level supplier. Encoders read it for every frame, so /zstdnet complevel set 1-22
+applies to existing and new connections. Automatic benchmarking may replace a temporary level.
+
+The benchmark accumulates real packet samples in a bounded FIFO: at most 4096 samples, at most 4 KiB per sample, and at
+most 16 MiB total. Fewer than 4096 samples produces waiting and a retry about once per second instead of skipping.
+Levels 1 through 22 are round-tripped through the frame codec. Estimated latency combines codec time with a 100 Mbps
+network estimate. The fastest estimate is the baseline; candidates under 10 ms above it compete by compressed-size
+percentage, and the lowest percentage wins.
+
+benchmark start stores the requesting player but does not send a waiting or running screen. A completion callback sends
+the result screen only for a complete result. benchmark info sends the current result on demand.
 
 ### Dictionaries
 
-Dictionary support is wired into NeoForge 1.21.1. The server can collect live inbound and outbound traffic, then train a dictionary asynchronously (128 KiB target, up to 16 MiB of samples). A connecting client receives the selected dictionary in a control record and acknowledges its ID before dictionary-compressed data frames are used. The client validates and caches the dictionary under `config/zstdnet/dictionary.zdict`; an in-memory copy remains usable if caching fails. Changing the selected dictionary affects new connections, while active connections retain their negotiated dictionary.
+NeoForge 1.21.1 trains dictionaries asynchronously from live traffic. The target dictionary capacity is 128 KiB, the
+training sample target is 16 MiB, and each captured sample is capped at 4 KiB. All managed files are below
+config/zstdnet/dict/: dictionary.zdict, dictionary-selection.txt, dictionary-naming.properties, pending_*.zdict, and
+temp_*.zdict.
+
+Training and import create pending dictionaries. Permission-level-2 players can name them; names expire after 60 seconds
+to untitled_yyyyMMdd_HH-mm-ss.SSS. Shutdown saves use temp_ and remain pending across restart. dictionary export returns
+the selected existing path and does not create an exports copy. Changing selection or unloading affects new connections;
+active connections retain their negotiated dictionary.
+
+The server sends the selected dictionary in a control record. The client validates its ID and caches it below
+config/zstdnet/dict/. A disk-cache failure does not prevent in-memory use. The client acknowledges before
+dictionary-compressed frames are enabled.
+
+### Status screens
+
+NeoForge 1.21.1 registers separate benchmark, management-status, and dictionary-status payloads. Player commands update
+the corresponding client screen; console sources retain translated text output. Screen labels use GOLD, dynamic values
+use AQUA, and units such as percent, milliseconds, minutes, seconds, and byte units use GREEN.
+
+### Build and validation
+
+`bash ./build.sh` is the local build entry point. It creates `target/`, cleans generated jars, and builds supported
+variants. `core:test` covers protocol round trips, pipeline behavior, dictionary lifecycle, and benchmark logic.
+Artifact inspection should confirm server-client classes in the 1.21.1 jar and client-only entry points in newer NeoForge
+jars. Full Minecraft runtime behavior, real compression ratios, dictionary transfer, and screen rendering still require
+in-game validation.
 
 ## 中文
 
-### 模块结构
+### 模块与版本变体
 
-- `core` 提供网络协议、Netty 编解码器、流量统计，以及字典存储、训练和同步。
-- `mod-common` 负责客户端配置、连接选择和共享客户端钩子。
-- `fabric` 与 `neoforge` 提供加载器入口和 Minecraft Mixin。NeoForge 1.21.1 还包含专用服务端实现；较新版本的 NeoForge 产物仅面向客户端。
-- `spigot` 将处理器注入 Minecraft 服务端现有 listener，不会另行监听端口。
+- core 提供网络帧协议、Netty 编解码器、流量统计、压缩 benchmark、字典存储、训练和同步。
+- mod-common 提供共享客户端配置、连接选择、字典缓存和客户端钩子。
+- fabric 提供 1.21.11 与 26.1 的 Fabric 客户端入口。
+- neoforge/src/1_21_1 包含 NeoForge 1.21.1 双端实现，包括命令、payload、状态界面、字典传输和同端口注入。
+- neoforge/src/1_21_11 与 neoforge/src/26_1 包含较新版本 NeoForge 客户端入口。
+- spigot 将处理器注入现有 Minecraft listener，不会额外监听端口。
 
-### 连接与 Pipeline
+### 连接与网络帧
 
-客户端在开始连接时根据 `config/zstdnet-client.properties` 中的 `enabled` 和 `servers` 配置决定是否启用 ZstdNet。服务端地址保持不变，待处理连接标记最多保留 15 秒。Minecraft 配置连接通道时，Mixin 安装共享 Netty 编解码器：入站解码器位于 AES 解密之后、Minecraft packet splitter 之前；出站编码器位于 AES 加密之前、packet framing 之后。Minecraft 启用加密时会重新调整处理器位置。
+客户端读取 config/zstdnet-client.properties，待处理连接标记最多保留 15 秒。共享 Netty 编解码器的入站位置在 AES 解密之后、packet
+splitter 之前；出站位置在 AES 加密之前、packet framing 之后。服务端检测器识别 Zstandard frame magic 和协议版本，安装 ZstdNet
+Pipeline 并抑制原版压缩协商。原版 status ping 透传，原版 login 返回配置的拒绝提示。
 
-服务端 accept handler 为每个新连接添加协议检测器。检测器识别 ZstdNet 流起始处的 Zstandard frame magic，再验证单字节协议版本。确认后安装 ZstdNet pipeline，并抑制该连接的原版登录压缩协商。原版状态 ping 会透传；原版登录会按配置提示拒绝。Spigot 通过缓存的 MethodHandle 查找现有 listener 通道；NeoForge 1.21.1 则直接访问服务端 listener。
+数据帧包含未压缩长度和存储标记两个 VarInt，随后是负载。标记为零时原样存储，否则记录编码长度，最低位表示字典压缩。只有完整编码帧更小时才压缩，单帧上限为
+8 MiB。未压缩长度为零表示用于字典发送和确认的控制记录，字典流使用协议版本 1。
 
-### 网络帧格式
+### 压缩等级与 benchmark
 
-每个数据帧由两个 VarInt 和负载组成：未压缩长度，以及存储标记。标记为零时负载原样存储；非零时，其高位部分记录负载长度，最低位表示是否使用字典压缩。只有压缩后的编码帧小于原始负载时才使用压缩。单帧上限为 8 MiB。未压缩长度为零表示控制记录，目前用于字典发送和确认。启用字典的流以协议版本 `1` 开始。
+服务端维护共享压缩等级供应器，编码器每帧读取，因此 /zstdnet complevel set 1-22 会对现有和新连接生效。自动 benchmark
+可能覆盖临时等级。
 
-### 字典同步
+benchmark 将真实数据包样本累加到有界 FIFO：最多 4096 个样本，单个最多 4 KiB，总量最多 16 MiB。样本不足 4096 个时进入
+waiting，并约每秒重试，不会跳过。等级 1 到 22 全部进行 frame codec 往返测试。预计延迟由编解码耗时和 100 Mbps
+网络估算组成；先取最低延迟作为基线，再在额外延迟小于 10 ms 的候选中选择压缩率最低者。
 
-字典功能接入 NeoForge 1.21.1。服务端可采集连接的上下行流量，并异步训练字典（目标容量 128 KiB，样本上限 16 MiB）。新连接会通过控制记录接收当前字典，并确认字典 ID；确认前不会使用字典压缩数据帧。客户端校验字典并缓存到 `config/zstdnet/dictionary.zdict`；即使缓存失败，当前连接仍可使用内存中的字典。切换字典只影响新连接，已有连接继续使用协商过的字典。
+benchmark start 只保存请求玩家，不发送 waiting 或 running 界面；只有 complete 结果才发送结果界面。benchmark info 可主动查看当前结果。
+
+### 字典
+
+NeoForge 1.21.1 从实时流量异步训练字典。目标容量 128 KiB，训练样本目标 16 MiB，单个样本最多 4 KiB。所有托管文件位于
+config/zstdnet/dict/，包括 dictionary.zdict、dictionary-selection.txt、dictionary-naming.properties、pending_*.zdict 和
+temp_*.zdict。
+
+训练和导入会创建待命名字典。权限等级 2 的玩家可以命名；60 秒后自动命名为 untitled_yyyyMMdd_HH-mm-ss.SSS。关服保存使用 temp_
+并跨重启保持待命名。dictionary export 直接返回现有选中文件路径，不创建 exports 副本。切换或卸载只影响新连接，已有连接保留协商出的字典。
+
+服务端通过控制记录发送字典，客户端校验 ID 并缓存到 config/zstdnet/dict/。磁盘缓存失败不影响当前连接使用内存字典，客户端确认后才启用字典压缩帧。
+
+### 状态界面
+
+NeoForge 1.21.1 为 benchmark、管理状态和字典状态分别注册 payload。玩家命令更新对应客户端界面，控制台继续使用文本输出。界面标签为
+GOLD，动态数据为 AQUA，百分比、毫秒、分钟、秒和字节单位为 GREEN。
+
+### 构建与验证
+
+build.sh 脚本创建 target/、清理生成 JAR 并构建支持的变体。core:test 覆盖协议往返、Pipeline、字典生命周期和 benchmark
+逻辑。产物检查应确认 1.21.1 JAR 包含双端类，较新 NeoForge JAR 包含客户端入口。完整 Minecraft 运行时行为、实际压缩率、字典传输和界面渲染仍需游戏内验证。

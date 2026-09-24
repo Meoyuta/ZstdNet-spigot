@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
+import java.util.function.IntSupplier;
 
 public final class ZstdNettyPipeline {
     public static final String INBOUND_HANDLER = "zstdnet-inbound";
@@ -27,6 +28,16 @@ public final class ZstdNettyPipeline {
     public static void install(
         ChannelPipeline pipeline,
         int level,
+        boolean sendMagic,
+        ZstdFrameStats stats,
+        ZstdDictionarySession dictionarySession
+    ) {
+        install(pipeline, () -> level, sendMagic, stats, dictionarySession);
+    }
+
+    public static void install(
+        ChannelPipeline pipeline,
+        IntSupplier level,
         boolean sendMagic,
         ZstdFrameStats stats,
         ZstdDictionarySession dictionarySession

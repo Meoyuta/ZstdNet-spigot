@@ -20,7 +20,7 @@ public final class ZstdNetPlugin extends JavaPlugin {
     public void onEnable() {
         portSetup = new ServerPortSetup(this);
         dictionaryStore = new ZstdDictionaryStore(
-            getDataFolder().toPath().resolve("dictionary.zdict"),
+            getDataFolder().toPath().resolve("dict").resolve("dictionary.zdict"),
             new BukkitLogger(getLogger())
         );
         dictionaryStore.load();

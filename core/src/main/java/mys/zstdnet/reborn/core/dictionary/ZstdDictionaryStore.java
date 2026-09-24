@@ -238,10 +238,8 @@ public final class ZstdDictionaryStore {
 
     public synchronized Path export() throws IOException {
         if (dictionary == null) throw new IOException("No dictionary is loaded; train or import one first");
-        Path directory = dictionaryPath.getParent().resolve("exports");
-        Files.createDirectories(directory);
-        Path exported = Files.createTempFile(directory, "dictionary-" + Long.toUnsignedString(dictionary.id()) + "-", ".zdict");
-        Files.write(exported, dictionary.bytes());
+        Path exported = selectedPath == null ? dictionaryPath : selectedPath;
+        if (!Files.isRegularFile(exported)) throw new IOException("Selected dictionary file does not exist: " + exported);
         return exported.toAbsolutePath().normalize();
     }
 

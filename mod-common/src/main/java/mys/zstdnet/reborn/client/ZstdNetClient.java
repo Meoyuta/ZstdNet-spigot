@@ -22,7 +22,7 @@ public final class ZstdNetClient {
     public static void init(Path configDir, ZstdNetLogger proxyLogger) {
         logger = Objects.requireNonNull(proxyLogger, "proxyLogger");
         config = ClientConfig.load(configDir);
-        dictionaryStore = new ZstdDictionaryStore(configDir.resolve("zstdnet").resolve("dictionary.zdict"), logger);
+        dictionaryStore = new ZstdDictionaryStore(configDir.resolve("zstdnet").resolve("dict").resolve("dictionary.zdict"), logger);
         logger.info("ZstdNet client initialized");
     }
 
@@ -69,7 +69,7 @@ public final class ZstdNetClient {
     public static ZstdDictionary receiveServerDictionary(long expectedId, byte[] bytes) throws IOException {
         var store = dictionaryStore;
         if (store == null) {
-            store = new ZstdDictionaryStore(Path.of("config", "zstdnet", "dictionary.zdict"), logger());
+            store = new ZstdDictionaryStore(Path.of("config", "zstdnet", "dict", "dictionary.zdict"), logger());
             dictionaryStore = store;
         }
         var dictionary = ZstdDictionary.fromBytes(bytes);
@@ -87,7 +87,7 @@ public final class ZstdNetClient {
     public static Path dictionaryPath() {
         var store = dictionaryStore;
         if (store == null) {
-            return Path.of("config", "zstdnet", "dictionary.zdict").toAbsolutePath().normalize();
+            return Path.of("config", "zstdnet", "dict", "dictionary.zdict").toAbsolutePath().normalize();
         }
         return store.dictionaryPath();
     }

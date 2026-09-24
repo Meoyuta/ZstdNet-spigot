@@ -95,7 +95,7 @@ build_neoforge_variant() {
         "-Parchitectury_api_version=$architectury_api_version"
         "-Pneoforge_version=$neoforge_version"
         "-Pneoforge_fml_loader_version=$neoforge_fml_loader_version"
-        -Pneoforge_variant=server-1211
+        -Pneoforge_variant=1_21_1
         -Pclient_loom_enabled=true
         -Pfabric_loom_enabled=false
         -Pnamed_client_jar_enabled=false
@@ -143,7 +143,10 @@ build_variant() {
 
     local -a gradle_args=(
         --no-daemon
-        clean
+        :core:clean
+        :spigot:clean
+        :fabric:clean
+        :neoforge:clean
         build
         "-Pminecraft_version=$mc_version"
         "-Pjava_version=$java_version"
@@ -154,7 +157,7 @@ build_variant() {
         "-Pneoforge_version=$neoforge_version"
         "-Pneoforge_fml_loader_version=$neoforge_fml_loader_version"
         "-Pclient_loom_enabled=$client_loom_enabled"
-        -Pneoforge_variant=client
+        "-Pneoforge_variant=$([[ "$mc_version" == "1.21.11" ]] && echo 1_21_11 || echo 26_1)"
         "-Pnamed_client_jar_enabled=$named_client_jar_enabled"
         "-Pminecraft_client_url=$minecraft_client_url"
     )

@@ -5,9 +5,10 @@ import mys.zstdnet.reborn.core.protocol.VarIntCodec;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.handler.codec.MessageToByteEncoder;
+import java.util.function.IntSupplier;
 
 public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
-    private final int level;
+    private final IntSupplier level;
     private final boolean sendMagic;
     private final ZstdFrameStats stats;
     private final ZstdDictionarySession dictionarySession;
@@ -15,10 +16,15 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
     private boolean streamHeaderSent;
 
     public ZstdNettyEncoder(int level, boolean sendMagic, ZstdFrameStats stats) {
-        this(level, sendMagic, stats, null);
+        this(() -> level, sendMagic, stats, null);
     }
 
     public ZstdNettyEncoder(int level, boolean sendMagic, ZstdFrameStats stats, ZstdDictionarySession dictionarySession) {
+        this(() -> level, sendMagic, stats, dictionarySession);
+    }
+
+    public ZstdNettyEncoder(IntSupplier level, boolean sendMagic, ZstdFrameStats stats,
+                            ZstdDictionarySession dictionarySession) {
         this.level = level;
         this.sendMagic = sendMagic;
         this.stats = stats == null ? ZstdFrameStats.NONE : stats;
@@ -66,7 +72,7 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
         mys.zstdnet.reborn.core.dictionary.ZstdDictionary dictionary = dictionarySession == null
             ? null
             : dictionarySession.activeDictionary();
-        var frame = ZstdFrameCodec.compressFrame(raw, level, dictionary);
+        var frame = ZstdFrameCodec.compressFrame(raw, level.getAsInt(), dictionary);
         wireBytes += frame.length;
         out.writeBytes(frame);
         stats.outbound(raw.length, wireBytes);
