@@ -1,6 +1,7 @@
 package mys.zstdnet.reborn.core.netty;
 
 import mys.zstdnet.reborn.core.protocol.ZstdFrameCodec;
+import mys.zstdnet.reborn.core.protocol.ZstdPersistentStreamCodec;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.ByteToMessageDecoder;
@@ -12,6 +13,9 @@ public final class ZstdNettyDecoder extends ByteToMessageDecoder {
     private final ZstdFrameStats stats;
     private final ZstdDictionarySession dictionarySession;
     private boolean streamHeaderRead;
+    private ZstdPersistentStreamCodec persistentStream;
+    private long persistentDictionaryId = Long.MIN_VALUE;
+    private boolean ownsPersistentStream = true;
 
     public ZstdNettyDecoder(ZstdFrameStats stats) {
         this(stats, null);
@@ -25,6 +29,9 @@ public final class ZstdNettyDecoder extends ByteToMessageDecoder {
     ZstdNettyDecoder copyForMove() {
         var copy = new ZstdNettyDecoder(stats, dictionarySession);
         copy.streamHeaderRead = streamHeaderRead;
+        copy.persistentStream = persistentStream;
+        copy.persistentDictionaryId = persistentDictionaryId;
+        ownsPersistentStream = false;
         return copy;
     }
 
@@ -55,7 +62,7 @@ public final class ZstdNettyDecoder extends ByteToMessageDecoder {
             var payloadLength = storedTag == 0 ? rawLength : storedTag >>> 1;
             if (rawLength == 0) {
                 if (storedTag == 0 || (storedTag & 1) != 0 || payloadLength == 0
-                    || payloadLength > mys.zstdnet.reborn.core.dictionary.ZstdDictionary.MAX_BYTES + 13) {
+                    || payloadLength > mys.zstdnet.reborn.core.dictionary.ZstdDictionary.MAX_DOWNLINK_BYTES + 14) {
                     throw new IOException("invalid ZstdNet control frame");
                 }
                 var payloadStart = in.readerIndex();
@@ -72,6 +79,11 @@ public final class ZstdNettyDecoder extends ByteToMessageDecoder {
                     throw new IOException("received ZstdNet control frame without a session");
                 }
                 dictionarySession.receiveControl(control);
+                if (dictionarySession.consumeInboundStreamReset()) {
+                    closePersistentStream();
+                    persistentStream = null;
+                    persistentDictionaryId = Long.MIN_VALUE;
+                }
                 if (dictionarySession.hasPendingControl()) {
                     // Start at the encoder context: bypass Minecraft's packet encoder and length prepender.
                     var encoder = ctx.pipeline().context(ZstdNettyPipeline.OUTBOUND_HANDLER);
@@ -94,11 +106,23 @@ public final class ZstdNettyDecoder extends ByteToMessageDecoder {
             var usesDictionary = storedTag != 0 && (storedTag & 1) == 1;
             mys.zstdnet.reborn.core.dictionary.ZstdDictionary dictionary = dictionarySession == null
                 ? null
-                : dictionarySession.activeDictionary();
+                : dictionarySession.activeInboundDictionary();
             if (usesDictionary && dictionary == null) {
                 throw new IOException("received dictionary-compressed ZstdNet frame before dictionary activation");
             }
-            var raw = storedTag == 0 ? payload : ZstdFrameCodec.decompressFrame(payload, rawLength, usesDictionary ? dictionary : null);
+            byte[] raw;
+            if (dictionarySession == null) {
+                raw = storedTag == 0 ? payload : ZstdFrameCodec.decompressFrame(payload, rawLength, usesDictionary ? dictionary : null);
+            } else {
+                var streamDictionary = usesDictionary ? dictionary : null;
+                var dictionaryId = streamDictionary == null ? 0L : streamDictionary.id();
+                if (persistentStream == null || persistentDictionaryId != dictionaryId) {
+                    if (persistentStream != null) persistentStream.close();
+                    persistentStream = new ZstdPersistentStreamCodec(3, streamDictionary);
+                    persistentDictionaryId = dictionaryId;
+                }
+                raw = storedTag == 0 ? payload : persistentStream.decompress(payload, rawLength);
+            }
             stats.inbound(raw.length, in.readerIndex() - frameStart);
             stats.inboundSample(raw);
             out.add(Unpooled.wrappedBuffer(raw));
@@ -111,14 +135,23 @@ public final class ZstdNettyDecoder extends ByteToMessageDecoder {
             super.channelInactive(ctx);
         } finally {
             if (dictionarySession != null) dictionarySession.disconnected();
+            closePersistentStream();
         }
     }
 
     @Override
     public void exceptionCaught(io.netty.channel.ChannelHandlerContext ctx, Throwable cause) {
         if (dictionarySession != null) dictionarySession.disconnected();
+        try { closePersistentStream(); } catch (IOException ignored) { }
         ctx.fireExceptionCaught(cause);
         ctx.close();
+    }
+
+    private void closePersistentStream() throws IOException {
+        if (ownsPersistentStream && persistentStream != null) {
+            persistentStream.close();
+            persistentStream = null;
+        }
     }
 
     private static Integer readVarInt(ByteBuf in) throws IOException {

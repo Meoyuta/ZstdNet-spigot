@@ -49,7 +49,8 @@ public final class ZstdNetConnectionHooks {
             pending.compressionLevel(),
             true,
             ZstdFrameStats.NONE,
-            ZstdDictionarySession.client(ZstdNetClient::receiveServerDictionary, ZstdNetClient.dictionaryDownloadListener())
+            ZstdDictionarySession.client(ZstdNetClient::receiveServerDictionary,
+                ZstdNetClient.dictionaryDownloadListener(), ZstdNetClient.uplinkDictionary())
         );
         ZstdNetClient.logger().info("installed ZstdNet pipeline for " + pending.host() + ":" + pending.port());
     }

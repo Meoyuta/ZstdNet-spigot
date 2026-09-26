@@ -39,6 +39,8 @@ main() {
     build_variant         "26.1" "25" "26.1-R0.1-SNAPSHOT" "26.1" "20.0.4"         "0.145.1+1.21.1" "26.1.0.19-beta" "4.0.42" "false" "true"         "https://piston-data.mojang.com/v1/objects/191771837687b766537a8c4607cb6fad79c533a1/client.jar"         "$version" || return 1
 
     echo "Built all ZstdNet variants into: $TARGET"
+
+    echo "All variant build successfully."
 }
 
 select_java() {

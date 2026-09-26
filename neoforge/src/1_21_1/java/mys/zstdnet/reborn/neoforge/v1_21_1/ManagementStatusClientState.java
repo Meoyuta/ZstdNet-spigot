@@ -8,12 +8,6 @@ final class ManagementStatusClientState {
 
     static void receive(ManagementStatusPayload payload) {
         var client = Minecraft.getInstance();
-        client.execute(() -> {
-            if (client.screen instanceof ManagementStatusScreen screen) {
-                screen.update(payload);
-            } else {
-                client.setScreen(new ManagementStatusScreen(payload));
-            }
-        });
+        client.execute(() -> ZstdInfoOverlay.management(payload));
     }
 }

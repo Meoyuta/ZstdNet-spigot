@@ -12,11 +12,19 @@ record ManagementStatusPayload(
         long rawUpBytes,
         long wireDownBytes,
         long rawDownBytes,
+        long wireUpRate,
+        long rawUpRate,
+        long wireDownRate,
+        long rawDownRate,
         double ratioPercent,
         int connections,
+        int compressionLevel,
         String dictionary,
         int dictionaryConnections,
-        int selectedDictionaryConnections
+        int selectedDictionaryConnections,
+        double latencyMillis,
+        long uptimeSeconds,
+        int benchmarkRuns
 ) implements CustomPacketPayload {
     static final Type<ManagementStatusPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath("zstdnet", "management_status"));
@@ -30,11 +38,19 @@ record ManagementStatusPayload(
         buffer.writeVarLong(payload.rawUpBytes);
         buffer.writeVarLong(payload.wireDownBytes);
         buffer.writeVarLong(payload.rawDownBytes);
+        buffer.writeVarLong(payload.wireUpRate);
+        buffer.writeVarLong(payload.rawUpRate);
+        buffer.writeVarLong(payload.wireDownRate);
+        buffer.writeVarLong(payload.rawDownRate);
         buffer.writeDouble(payload.ratioPercent);
         buffer.writeVarInt(payload.connections);
+        buffer.writeVarInt(payload.compressionLevel);
         buffer.writeUtf(payload.dictionary, 512);
         buffer.writeVarInt(payload.dictionaryConnections);
         buffer.writeVarInt(payload.selectedDictionaryConnections);
+        buffer.writeDouble(payload.latencyMillis);
+        buffer.writeVarLong(payload.uptimeSeconds);
+        buffer.writeVarInt(payload.benchmarkRuns);
     }
 
     private static ManagementStatusPayload read(RegistryFriendlyByteBuf buffer) {
@@ -42,8 +58,11 @@ record ManagementStatusPayload(
                 buffer.readUtf(32), buffer.readVarInt(),
                 buffer.readVarLong(), buffer.readVarLong(),
                 buffer.readVarLong(), buffer.readVarLong(),
-                buffer.readDouble(), buffer.readVarInt(),
-                buffer.readUtf(512), buffer.readVarInt(), buffer.readVarInt());
+                buffer.readVarLong(), buffer.readVarLong(),
+                buffer.readVarLong(), buffer.readVarLong(),
+                buffer.readDouble(), buffer.readVarInt(), buffer.readVarInt(),
+                buffer.readUtf(512), buffer.readVarInt(), buffer.readVarInt(), buffer.readDouble(),
+                buffer.readVarLong(), buffer.readVarInt());
     }
 
     @Override

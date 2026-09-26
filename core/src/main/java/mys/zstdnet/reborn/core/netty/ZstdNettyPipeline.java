@@ -103,7 +103,9 @@ public final class ZstdNettyPipeline {
             return;
         }
 
-        var handler = copyForMove(pipeline.remove(name));
+        var currentHandler = pipeline.get(name);
+        var handler = copyForMove(currentHandler);
+        pipeline.remove(name);
         pipeline.addAfter(baseName, name, handler);
     }
 
@@ -115,7 +117,9 @@ public final class ZstdNettyPipeline {
             return;
         }
 
-        var handler = copyForMove(pipeline.remove(name));
+        var currentHandler = pipeline.get(name);
+        var handler = copyForMove(currentHandler);
+        pipeline.remove(name);
         pipeline.addBefore(baseName, name, handler);
     }
 

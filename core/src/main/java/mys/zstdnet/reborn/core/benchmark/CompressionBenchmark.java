@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
@@ -24,8 +26,14 @@ public final class CompressionBenchmark implements AutoCloseable {
     private static final int SAMPLE_LIMIT = 16 * 1024 * 1024;
     private static final int MAX_SAMPLE_BYTES = 4 * 1024;
     private static final int SAMPLE_COUNT_LIMIT = 4096;
-    private static final int MINIMUM_SAMPLES = 4096;
-    private static final double LATENCY_BUDGET_MILLIS = 10.0;
+    private static final int MINIMUM_SAMPLE_COUNT = 512;
+    private static final int MINIMUM_SAMPLE_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_BENCHMARK_WORKING_SET_BYTES = 1024 * 1024;
+    private static final int MIN_BENCHMARK_LEVEL = 5;
+    private static final int MAX_BENCHMARK_LEVEL = 13;
+    private static final int BENCHMARK_MIN_FRAME_BYTES = 32;
+    private static final double LATENCY_BUDGET_MILLIS = 3.0;
+    private static final double RELATIVE_LATENCY_BUDGET = 0.25;
     private final Path configPath;
     private final ZstdNetLogger logger;
     private final IntSupplier connectionCount;
@@ -35,6 +43,11 @@ public final class CompressionBenchmark implements AutoCloseable {
     private volatile Consumer<Result> completionListener = ignored -> {};
     private final ExecutorService executor = Executors.newSingleThreadExecutor(task -> {
         var thread = new Thread(task, "zstdnet-compression-benchmark");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
+        var thread = new Thread(task, "zstdnet-compression-benchmark-scheduler");
         thread.setDaemon(true);
         return thread;
     });
@@ -58,6 +71,13 @@ public final class CompressionBenchmark implements AutoCloseable {
         this.dictionarySupplier = dictionarySupplier;
         loadConfig();
         nextRunAt = System.currentTimeMillis() + intervalMillis();
+        scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                tick();
+            } catch (Throwable error) {
+                logger.error("Compression benchmark scheduler failed: " + error);
+            }
+        }, 1, 1, TimeUnit.SECONDS);
     }
 
     private static int parseInt(String value, int fallback) {
@@ -70,6 +90,30 @@ public final class CompressionBenchmark implements AutoCloseable {
 
     private static long byteCount(List<byte[]> values) {
         return values.stream().mapToLong(value -> value.length).sum();
+    }
+
+    static List<byte[]> boundedCorpus(List<byte[]> values) {
+        if (byteCount(values) <= MAX_BENCHMARK_WORKING_SET_BYTES) return values;
+        var stride = Math.max(1, (int) Math.ceil(values.size()
+                * (double) MAX_BENCHMARK_WORKING_SET_BYTES / byteCount(values)));
+        var bounded = new ArrayList<byte[]>();
+        var bytes = 0;
+        for (var i = 0; i < values.size(); i += stride) {
+            var sample = values.get(i);
+            if (bytes + sample.length <= MAX_BENCHMARK_WORKING_SET_BYTES) {
+                bounded.add(sample);
+                bytes += sample.length;
+            }
+        }
+        return List.copyOf(bounded);
+    }
+
+    static List<Integer> candidateLevels() {
+        var levels = new ArrayList<Integer>(MAX_BENCHMARK_LEVEL - MIN_BENCHMARK_LEVEL + 1);
+        for (var level = MIN_BENCHMARK_LEVEL; level <= MAX_BENCHMARK_LEVEL; level++) {
+            levels.add(level);
+        }
+        return List.copyOf(levels);
     }
 
     public synchronized void capture(byte[] raw) {
@@ -117,26 +161,31 @@ public final class CompressionBenchmark implements AutoCloseable {
             scheduleNext();
             return false;
         }
-        if (snapshot.size() < MINIMUM_SAMPLES) {
+        var snapshotBytes = byteCount(snapshot);
+        if (snapshot.size() < MINIMUM_SAMPLE_COUNT && snapshotBytes < MINIMUM_SAMPLE_BYTES) {
             running.set(false);
             lastResult = Result.waiting(automatic, currentLevel.getAsInt(), snapshot.size(), intervalMinutes);
-            logger.info("Compression benchmark waiting (%s): %d real packet samples available; need at least %d"
-                    .formatted(trigger, snapshot.size(), MINIMUM_SAMPLES));
+            logger.info("Compression benchmark waiting (%s): %d real packet samples/%d bytes available; need %d samples or %d bytes; active connections=%d"
+                    .formatted(trigger, snapshot.size(), snapshotBytes, MINIMUM_SAMPLE_COUNT, MINIMUM_SAMPLE_BYTES, activeConnections));
             nextRunAt = System.currentTimeMillis() + 1_000L;
             return true;
         }
 
+        var filteredSnapshot = snapshot.stream()
+                .filter(sample -> sample.length >= BENCHMARK_MIN_FRAME_BYTES)
+                .toList();
+        final var benchmarkCorpus = boundedCorpus(filteredSnapshot.isEmpty() ? snapshot : filteredSnapshot);
         logger.info("Compression benchmark started (%s): %d active connection(s), %d real packet samples, %d bytes, dictionary=%s"
-                .formatted(trigger, activeConnections, snapshot.size(), byteCount(snapshot), dictionarySupplier.get() != null));
+                .formatted(trigger, activeConnections, benchmarkCorpus.size(), byteCount(benchmarkCorpus), dictionarySupplier.get() != null));
         var useAutomatic = automatic;
         var dictionary = dictionarySupplier.get();
         executor.execute(() -> {
             try {
-                var result = benchmark(snapshot, dictionary, useAutomatic);
+                var result = benchmark(benchmarkCorpus, dictionary, useAutomatic);
                 if (useAutomatic) levelSetter.accept(result.level());
                 lastResult = result;
                 completionListener.accept(result);
-                logger.info("Compression benchmark completed: level=%d, mode=%s, compression=%.2f%%, encode+decode=%.3f ms, estimated total=%.3f ms, samples=%d"
+                logger.info("Compression benchmark completed: level=%d, mode=%s, compression=%.2f%%, encode+decode=%.4f ms, estimated total=%.4f ms, samples=%d"
                         .formatted(result.level(), result.automatic() ? "automatic" : "manual", result.compressionPercent(),
                                 result.codecMillis(), result.estimatedMillis(), result.samples()));
             } catch (Exception e) {
@@ -152,14 +201,16 @@ public final class CompressionBenchmark implements AutoCloseable {
     }
 
     private Result benchmark(List<byte[]> corpus, ZstdDictionary dictionary, boolean applyResult) throws IOException {
-        var candidates = new ArrayList<Result>(22);
+        var levels = candidateLevels();
+        var candidates = new ArrayList<Result>(levels.size());
         var current = currentLevel.getAsInt();
-        for (var level = 1; level <= 22; level++) {
+        for (var level : levels) {
+            for (var raw : corpus) ZstdFrameCodec.compressFrame(raw, level, dictionary, false);
             long encodedBytes = 0;
             long codecNanos = 0;
             for (var raw : corpus) {
                 var encodeStart = System.nanoTime();
-                var frame = ZstdFrameCodec.compressFrame(raw, level, dictionary);
+                var frame = ZstdFrameCodec.compressFrame(raw, level, dictionary, false);
                 var encodeNanos = System.nanoTime() - encodeStart;
                 var decodeStart = System.nanoTime();
                 var decoded = ZstdFrameCodec.readFrame(new ByteArrayInputStream(frame), dictionary);
@@ -175,17 +226,24 @@ public final class CompressionBenchmark implements AutoCloseable {
             var networkMillis = averageEncodedBytes * 8.0 / 100_000_000.0 * 1_000.0;
             var estimatedMillis = codecMillis + networkMillis;
             var candidate = new Result("complete", level, applyResult, compressionPercent,
-                    codecMillis, estimatedMillis, corpus.size(), System.currentTimeMillis(), intervalMinutes);
+                    codecMillis, estimatedMillis, corpus.size(), 0, intervalMinutes);
             candidates.add(candidate);
         }
+        var best = selectBestCandidate(candidates);
+        var completedAt = System.currentTimeMillis();
+        if (!applyResult) return new Result(best.state(), current, false, best.compressionPercent(),
+                best.codecMillis(), best.estimatedMillis(), corpus.size(), completedAt, intervalMinutes);
+        return new Result(best.state(), best.level(), true, best.compressionPercent(), best.codecMillis(),
+                best.estimatedMillis(), corpus.size(), completedAt, intervalMinutes);
+    }
+
+    static Result selectBestCandidate(List<Result> candidates) {
         var fastestLatency = candidates.stream().mapToDouble(Result::estimatedMillis).min().orElseThrow();
-        var best = candidates.stream()
-                .filter(candidate -> candidate.estimatedMillis() < fastestLatency + LATENCY_BUDGET_MILLIS)
+        var latencyBudget = Math.min(LATENCY_BUDGET_MILLIS, fastestLatency * RELATIVE_LATENCY_BUDGET);
+        return candidates.stream()
+                .filter(candidate -> candidate.estimatedMillis() <= fastestLatency + latencyBudget)
                 .min((left, right) -> Double.compare(left.compressionPercent(), right.compressionPercent()))
                 .orElseThrow();
-        if (!applyResult) return new Result(best.state(), current, false, best.compressionPercent(),
-                best.codecMillis(), best.estimatedMillis(), corpus.size(), System.currentTimeMillis(), intervalMinutes);
-        return best;
     }
 
     public synchronized void setTemporaryLevel(int level) {
@@ -226,7 +284,9 @@ public final class CompressionBenchmark implements AutoCloseable {
 
     public Result result() {
         var result = lastResult;
-        return result == null ? Result.skipped("waiting", automatic, currentLevel.getAsInt(), intervalMinutes) : result;
+        if (result == null) return Result.skipped("waiting", automatic, currentLevel.getAsInt(), intervalMinutes);
+        return new Result(result.state(), result.level(), result.automatic(), result.compressionPercent(),
+                result.codecMillis(), result.estimatedMillis(), result.samples(), result.completedAt(), intervalMinutes);
     }
 
     private synchronized void scheduleNext() {
@@ -265,6 +325,7 @@ public final class CompressionBenchmark implements AutoCloseable {
 
     @Override
     public void close() {
+        scheduler.shutdownNow();
         executor.shutdownNow();
     }
 

@@ -55,6 +55,10 @@ final class SamePortZstdInjector implements AutoCloseable {
         this.compressionLevel = Objects.requireNonNull(compressionLevel, "compressionLevel");
     }
 
+    MinecraftServer server() {
+        return minecraftServer;
+    }
+
     void inject() {
         List<Channel> serverChannels = serverChannels();
         if (serverChannels.isEmpty()) {

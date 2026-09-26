@@ -83,6 +83,23 @@ class DictionarySyncTest {
         assertThrows(java.io.IOException.class, () -> server.receiveControl(ack));
     }
 
+    @Test void directionalSessionNegotiatesIndependentPaths() throws Exception {
+        var serverOutbound = DictionaryFixtures.dictionary();
+        var clientOutbound = DictionaryFixtures.dictionary();
+        var server = ZstdDictionarySession.server(serverOutbound, clientOutbound, null);
+        var client = ZstdDictionarySession.client((id, bytes) -> ZstdDictionary.fromBytes(bytes), null, clientOutbound);
+
+        client.receiveControl(server.pollOutboundControl());
+        server.receiveControl(client.pollOutboundControl());
+        server.receiveControl(client.pollOutboundControl());
+        client.receiveControl(server.pollOutboundControl());
+
+        assertSame(serverOutbound, server.activeOutboundDictionary());
+        assertNotNull(server.activeInboundDictionary());
+        assertNotNull(client.activeOutboundDictionary());
+        assertNotNull(client.activeInboundDictionary());
+    }
+
     private static EmbeddedChannel channel(ZstdDictionarySession session) {
         var channel = new EmbeddedChannel();
         channel.pipeline().addLast(ZstdNettyPipeline.OUTBOUND_HANDLER, new ZstdNettyEncoder(3, false, null, session));

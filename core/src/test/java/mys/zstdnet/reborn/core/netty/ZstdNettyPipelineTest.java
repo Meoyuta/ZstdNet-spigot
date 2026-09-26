@@ -45,6 +45,39 @@ class ZstdNettyPipelineTest {
     }
 
     @Test
+    void repositionKeepsPersistentStreamContextAlive() throws Exception {
+        var serverSession = ZstdDictionarySession.server(null);
+        var server = new EmbeddedChannel();
+        ZstdNettyPipeline.install(server.pipeline(), 3, false, ZstdFrameStats.NONE, serverSession);
+
+        var clientSession = ZstdDictionarySession.client((id, bytes) -> {
+            throw new java.io.IOException("No dictionary should be offered");
+        }, null);
+        var client = new EmbeddedChannel();
+        client.pipeline().addLast(ZstdNettyPipeline.INBOUND_HANDLER,
+                new ZstdNettyDecoder(ZstdFrameStats.NONE, clientSession));
+
+        var first = new byte[4096];
+        java.util.Arrays.fill(first, (byte) 'a');
+        assertTrue(server.writeOutbound(Unpooled.wrappedBuffer(first)));
+        client.writeInbound((ByteBuf) server.readOutbound());
+        assertInbound(client, first);
+
+        server.pipeline().addLast("encrypt", new ChannelOutboundHandlerAdapter());
+        ZstdNettyPipeline.reposition(server.pipeline());
+
+        var second = new byte[4096];
+        System.arraycopy(first, 0, second, 0, first.length);
+        second[second.length - 1] = 'b';
+        assertTrue(server.writeOutbound(Unpooled.wrappedBuffer(second)));
+        client.writeInbound((ByteBuf) server.readOutbound());
+        assertInbound(client, second);
+
+        server.finishAndReleaseAll();
+        client.finishAndReleaseAll();
+    }
+
+    @Test
     void encodesMagicAndRoundTripsFrame() {
         var raw = new byte[]{0x05, 0x00, 0x01, 0x02, 0x03, 0x04};
         var encoder = new EmbeddedChannel(new ZstdNettyEncoder(3, true, ZstdFrameStats.NONE));
@@ -100,6 +133,33 @@ class ZstdNettyPipelineTest {
     }
 
     @Test
+    void compressionLevelChangeResetsPeerPersistentStreamBeforeNextFrame() {
+        var level = new AtomicInteger(3);
+        var serverSession = ZstdDictionarySession.server(null);
+        var server = new EmbeddedChannel(new ZstdNettyEncoder(level::get, false, ZstdFrameStats.NONE, serverSession));
+        var clientSession = ZstdDictionarySession.client((id, bytes) -> {
+            throw new java.io.IOException("No dictionary should be offered");
+        }, null);
+        var client = new EmbeddedChannel(new ZstdNettyDecoder(ZstdFrameStats.NONE, clientSession));
+        var raw = new byte[4096];
+        java.util.Arrays.fill(raw, (byte) 'z');
+        try {
+            assertTrue(server.writeOutbound(Unpooled.wrappedBuffer(raw)));
+            client.writeInbound((ByteBuf) server.readOutbound());
+            assertInbound(client, raw);
+
+            level.set(9);
+            raw[raw.length - 1] = 'x';
+            assertTrue(server.writeOutbound(Unpooled.wrappedBuffer(raw)));
+            client.writeInbound((ByteBuf) server.readOutbound());
+            assertInbound(client, raw);
+        } finally {
+            server.finishAndReleaseAll();
+            client.finishAndReleaseAll();
+        }
+    }
+
+    @Test
     void dropsMinecraftCompressionNegotiation() {
         var channel = new EmbeddedChannel();
         var pipeline = channel.pipeline();
@@ -124,6 +184,18 @@ class ZstdNettyPipelineTest {
         channel.pipeline().addLast("encoder", new ChannelOutboundHandlerAdapter());
         channel.pipeline().addLast("packet_handler", new ChannelInboundHandlerAdapter());
         return channel;
+    }
+
+    private static void assertInbound(EmbeddedChannel channel, byte[] expected) {
+        ByteBuf actual = channel.readInbound();
+        assertNotNull(actual);
+        try {
+            var bytes = new byte[actual.readableBytes()];
+            actual.readBytes(bytes);
+            assertArrayEquals(expected, bytes);
+        } finally {
+            actual.release();
+        }
     }
 
     private static final class ClientboundLoginCompressionPacket {

@@ -11,13 +11,7 @@ final class BenchmarkInfoClientState {
     static void receive(BenchmarkInfoPayload payload) {
         latest = payload;
         var client = Minecraft.getInstance();
-        client.execute(() -> {
-            if (client.screen instanceof BenchmarkInfoScreen screen) {
-                screen.update(payload);
-            } else {
-                client.setScreen(new BenchmarkInfoScreen(payload));
-            }
-        });
+        client.execute(() -> ZstdInfoOverlay.benchmark(payload));
     }
 
     static BenchmarkInfoPayload latest() {

@@ -23,6 +23,7 @@ public final class ZstdNetClient {
         logger = Objects.requireNonNull(proxyLogger, "proxyLogger");
         config = ClientConfig.load(configDir);
         dictionaryStore = new ZstdDictionaryStore(configDir.resolve("zstdnet").resolve("dict").resolve("dictionary.zdict"), logger);
+        dictionaryStore.loadSelected();
         logger.info("ZstdNet client initialized");
     }
 
@@ -76,12 +77,20 @@ public final class ZstdNetClient {
         if (dictionary.id() != expectedId) {
             throw new IOException("server dictionary id does not match its payload");
         }
-        try {
-            store.save(bytes);
-        } catch (IOException e) {
-            logger().warn("Could not cache server dictionary; using it in memory: " + e.getMessage());
+        var uplink = store.uplinkDictionary();
+        if (uplink != null) {
+            try {
+                store.saveBundle(uplink.bytes(), bytes);
+            } catch (IOException e) {
+                logger().warn("Could not cache directional dictionary bundle: " + e.getMessage());
+            }
         }
         return dictionary;
+    }
+
+    public static ZstdDictionary uplinkDictionary() {
+        var store = dictionaryStore;
+        return store == null ? null : store.uplinkDictionary();
     }
 
     public static Path dictionaryPath() {

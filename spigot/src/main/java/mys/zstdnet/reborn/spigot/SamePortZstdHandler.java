@@ -106,7 +106,9 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
                 config.compressionLevel(),
                 false,
                 serverStats(),
-                ZstdDictionarySession.server(dictionaryStore == null ? null : dictionaryStore.dictionary())
+                ZstdDictionarySession.server(dictionaryStore == null ? null : dictionaryStore.dictionary(),
+                    dictionaryStore == null ? null : dictionaryStore.uplinkDictionary(),
+                    null)
             );
             MinecraftCompressionDisabler.install(ctx.pipeline());
             logger.info("accepted ZstdNet client connection from " + ctx.channel().remoteAddress());
@@ -131,27 +133,29 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
         return new ZstdFrameStats() {
             @Override
             public void inbound(long rawBytes, long wireBytes) {
-                stats.addRawUp(rawBytes);
-                stats.addWireUp(wireBytes);
-            }
-
-            @Override
-            public void outbound(long rawBytes, long wireBytes) {
+                // Server perspective: inbound is data received from the client (download).
                 stats.addRawDown(rawBytes);
                 stats.addWireDown(wireBytes);
             }
 
             @Override
+            public void outbound(long rawBytes, long wireBytes) {
+                // Server perspective: outbound is data sent to the client (upload).
+                stats.addRawUp(rawBytes);
+                stats.addWireUp(wireBytes);
+            }
+
+            @Override
             public void inboundSample(byte[] raw) {
                 if (dictionaryTrainer != null) {
-                    dictionaryTrainer.capture(raw);
+                    dictionaryTrainer.capture(true, raw);
                 }
             }
 
             @Override
             public void outboundSample(byte[] raw) {
                 if (dictionaryTrainer != null) {
-                    dictionaryTrainer.capture(raw);
+                    dictionaryTrainer.capture(false, raw);
                 }
             }
         };

@@ -13,11 +13,13 @@ public final class ZstdDictionaryStore {
     private final Path dictionaryPath;
     private final ZstdNetLogger logger;
     private volatile ZstdDictionary dictionary;
+    private volatile ZstdDictionary uplinkDictionary;
     private volatile Path selectedPath;
     private boolean managesSelection;
     private boolean namingEnabled;
     private boolean shuttingDown;
     private final java.util.Map<String, ZstdDictionary> pendingInstances = new java.util.HashMap<>();
+    private final java.util.Map<String, ZstdDictionary> pendingUplinkInstances = new java.util.HashMap<>();
     private final java.util.Properties pending = new java.util.Properties();
 
     public synchronized void enableNaming() throws IOException {
@@ -59,8 +61,14 @@ public final class ZstdDictionaryStore {
         var target = dictionaryPath.resolveSibling(name + ".zdict");
         if (Files.exists(target)) throw new IOException("Dictionary name already exists");
         var instance = pendingInstances.get(file);
-        if (instance == null) instance = source.equals(selectedPath) && dictionary != null
-            ? dictionary : ZstdDictionary.fromBytes(readBounded(source));
+        var uplinkInstance = pendingUplinkInstances.get(file);
+        if (instance == null && source.equals(selectedPath) && dictionary != null) instance = dictionary;
+        if (uplinkInstance == null && source.equals(selectedPath) && uplinkDictionary != null) uplinkInstance = uplinkDictionary;
+        if (instance == null || uplinkInstance == null) {
+            var contents = ZstdDictionaryBundle.unpack(readBundleBounded(source));
+            if (instance == null) instance = ZstdDictionary.fromBytes(contents.downlink(), ZstdDictionary.MAX_DOWNLINK_BYTES);
+            if (uplinkInstance == null) uplinkInstance = ZstdDictionary.fromBytes(contents.uplink(), ZstdDictionary.MAX_UPLINK_BYTES);
+        }
         Files.move(source, target);
         try {
             persistSelection(target.toString());
@@ -69,9 +77,11 @@ public final class ZstdDictionaryStore {
             throw e;
         }
         dictionary = instance;
+        uplinkDictionary = uplinkInstance;
         selectedPath = target;
         pending.remove(file);
         pendingInstances.remove(file);
+        pendingUplinkInstances.remove(file);
         persistPending();
         logger.info("Dictionary named and applied: " + target);
         return target;
@@ -101,6 +111,11 @@ public final class ZstdDictionaryStore {
         return dictionary;
     }
 
+    /** The optional client-to-server dictionary contained in the active bundle. */
+    public ZstdDictionary uplinkDictionary() {
+        return uplinkDictionary;
+    }
+
     public Path selectedPath() { return selectedPath; }
 
     public java.util.List<String> available() throws IOException {
@@ -124,6 +139,7 @@ public final class ZstdDictionaryStore {
                 var value = Files.readString(selection).trim();
                 if (value.equals("none")) {
                     dictionary = null;
+                    uplinkDictionary = null;
                     selectedPath = null;
                     logger.info("ZstdNet dictionary mode: disabled (saved selection)");
                     return false;
@@ -154,8 +170,18 @@ public final class ZstdDictionaryStore {
         var file = path.isAbsolute() ? path : dictionaryPath.getParent().resolve(path);
         file = file.toAbsolutePath().normalize();
         var next = pendingInstances.get(file.getFileName().toString());
-        if (next == null) next = file.equals(selectedPath) && dictionary != null
-            ? dictionary : ZstdDictionary.fromBytes(readBounded(file));
+        if (next == null) {
+            if (file.equals(selectedPath) && dictionary != null) {
+                next = dictionary;
+            } else {
+                byte[] stored = readBundleBounded(file);
+                if (ZstdDictionaryBundle.isBundle(stored)) {
+                    var contents = ZstdDictionaryBundle.unpack(stored);
+                    uplinkDictionary = ZstdDictionary.fromBytes(contents.uplink(), ZstdDictionary.MAX_UPLINK_BYTES);
+                    next = ZstdDictionary.fromBytes(contents.downlink(), ZstdDictionary.MAX_DOWNLINK_BYTES);
+                    } else throw new IOException("dictionary file must be a directional bundle");
+            }
+        }
         persistSelection(file.toString());
         dictionary = next;
         selectedPath = file;
@@ -166,6 +192,7 @@ public final class ZstdDictionaryStore {
     public synchronized void unload() throws IOException {
         persistSelection("none");
         dictionary = null;
+        uplinkDictionary = null;
         selectedPath = null;
         logger.info("Dictionary disabled for new connections; existing connections retain negotiated dictionaries");
     }
@@ -185,55 +212,84 @@ public final class ZstdDictionaryStore {
     public synchronized boolean load() {
         if (!Files.isRegularFile(dictionaryPath)) {
             dictionary = null;
+            uplinkDictionary = null;
             return false;
         }
         try {
-            dictionary = ZstdDictionary.fromBytes(readBounded(dictionaryPath));
+            byte[] stored = readBundleBounded(dictionaryPath);
+            if (ZstdDictionaryBundle.isBundle(stored)) {
+                var contents = ZstdDictionaryBundle.unpack(stored);
+                uplinkDictionary = ZstdDictionary.fromBytes(contents.uplink(), ZstdDictionary.MAX_UPLINK_BYTES);
+                dictionary = ZstdDictionary.fromBytes(contents.downlink(), ZstdDictionary.MAX_DOWNLINK_BYTES);
+            } else throw new IOException("dictionary file must be a directional bundle");
             logger.info("loaded ZstdNet dictionary id=" + Long.toUnsignedString(dictionary.id()) + " size=" + dictionary.size());
             return true;
         } catch (IOException | RuntimeException e) {
             dictionary = null;
+            uplinkDictionary = null;
             logger.warn("ignored invalid ZstdNet dictionary at " + dictionaryPath + ": " + e.getMessage());
             return false;
         }
     }
 
     public synchronized ZstdDictionary save(byte[] bytes) throws IOException {
-        logger.info("Dictionary save [1/3]: validating " + bytes.length + " bytes");
-        ZstdDictionary next = ZstdDictionary.fromBytes(bytes);
+        throw new IOException("A directional dictionary bundle is required");
+    }
+
+    /** Saves a dictionary using a direction-specific size limit. */
+    public synchronized ZstdDictionary save(byte[] bytes, int maximumBytes) throws IOException {
+        throw new IOException("A directional dictionary bundle is required");
+    }
+
+    /** Writes both directional dictionaries as one compressed bundle and activates its downlink entry. */
+    public synchronized ZstdDictionary saveBundle(byte[] uplink, byte[] downlink) throws IOException {
+        var nextUp = ZstdDictionary.fromBytes(uplink, ZstdDictionary.MAX_UPLINK_BYTES);
+        var nextDown = ZstdDictionary.fromBytes(downlink, ZstdDictionary.MAX_DOWNLINK_BYTES);
+        byte[] bundle = ZstdDictionaryBundle.pack(uplink, downlink);
         if (namingEnabled) {
             String prefix = shuttingDown ? "temp_" : "pending_";
             Path file = dictionaryPath.resolveSibling(prefix + timestamp() + ".zdict");
             int suffix = 1;
             while (Files.exists(file)) file = dictionaryPath.resolveSibling(prefix + timestamp() + "_" + suffix++ + ".zdict");
-            logger.info("Dictionary save [2/3]: writing " + file);
             Files.createDirectories(file.getParent());
-            Files.write(file, next.bytes(), java.nio.file.StandardOpenOption.CREATE_NEW);
+            Files.write(file, bundle, java.nio.file.StandardOpenOption.CREATE_NEW);
             String key = file.getFileName().toString();
             pending.setProperty(key, shuttingDown ? "0" : Long.toString(System.currentTimeMillis() + 60_000));
-            pendingInstances.put(key, next);
+            pendingInstances.put(key, nextDown);
+            pendingUplinkInstances.put(key, nextUp);
             persistPending();
-            if (shuttingDown) {
-                persistSelection(file.toString());
-            }
-            logger.info("Dictionary save [3/3]: saved " + file + "; awaiting naming");
-            return next;
+            if (shuttingDown) persistSelection(file.toString());
+            logger.info("Dictionary bundle saved to " + file + "; awaiting naming");
+            return nextDown;
         }
-        logger.info("Dictionary save [2/3]: writing " + dictionaryPath);
-        write(next.bytes());
+        write(bundle);
         if (managesSelection) persistSelection(dictionaryPath.toString());
-        dictionary = next;
+        uplinkDictionary = nextUp;
+        dictionary = nextDown;
         selectedPath = dictionaryPath;
-        logger.info("Dictionary save [3/3]: complete, id=" + Long.toUnsignedString(next.id()) + " size=" + next.size());
-        return next;
+        logger.info("Dictionary bundle saved: uplink=" + nextUp.size() + " bytes, downlink=" + nextDown.size() + " bytes");
+        return nextDown;
     }
 
     public synchronized ZstdDictionary importFrom(Path source) throws IOException {
+        return importFrom(source, ZstdDictionary.MAX_DOWNLINK_BYTES);
+    }
+
+    public synchronized ZstdDictionary importFrom(Path source, int maximumBytes) throws IOException {
         Path normalized = Objects.requireNonNull(source, "source").toAbsolutePath().normalize();
         if (!Files.isRegularFile(normalized)) {
             throw new IOException("dictionary file does not exist: " + normalized);
         }
-        return save(readBounded(normalized));
+        byte[] bytes = Files.size(normalized) > ZstdDictionaryBundle.MAX_BUNDLE_BYTES
+            ? throwTooLarge() : Files.readAllBytes(normalized);
+        var contents = ZstdDictionaryBundle.unpack(bytes);
+        return saveBundle(contents.uplink(), contents.downlink());
+    }
+
+    public synchronized ZstdDictionary importBundle(Path source) throws IOException {
+        Path normalized = Objects.requireNonNull(source, "source").toAbsolutePath().normalize();
+        var contents = ZstdDictionaryBundle.unpack(Files.readAllBytes(normalized));
+        return saveBundle(contents.uplink(), contents.downlink());
     }
 
     public synchronized Path export() throws IOException {
@@ -243,10 +299,33 @@ public final class ZstdDictionaryStore {
         return exported.toAbsolutePath().normalize();
     }
 
+    public synchronized byte[] exportBundle() throws IOException {
+        if (dictionary == null || uplinkDictionary == null) {
+            throw new IOException("Both directional dictionaries are required for bundle export");
+        }
+        return ZstdDictionaryBundle.pack(uplinkDictionary.bytes(), dictionary.bytes());
+    }
+
     private static byte[] readBounded(Path path) throws IOException {
+        return readBounded(path, ZstdDictionary.MAX_DOWNLINK_BYTES);
+    }
+
+    private static byte[] readBounded(Path path, int maximumBytes) throws IOException {
         try (var input = Files.newInputStream(path)) {
-            byte[] bytes = input.readNBytes(ZstdDictionary.MAX_BYTES + 1);
-            if (bytes.length > ZstdDictionary.MAX_BYTES) throw new IOException("Dictionary is too large");
+            byte[] bytes = input.readNBytes(maximumBytes + 1);
+            if (bytes.length > maximumBytes) throw new IOException("Dictionary is too large");
+            return bytes;
+        }
+    }
+
+    private static byte[] throwTooLarge() throws IOException {
+        throw new IOException("Dictionary bundle is too large");
+    }
+
+    private static byte[] readBundleBounded(Path path) throws IOException {
+        try (var input = Files.newInputStream(path)) {
+            byte[] bytes = input.readNBytes(ZstdDictionaryBundle.MAX_BUNDLE_BYTES + 1);
+            if (bytes.length > ZstdDictionaryBundle.MAX_BUNDLE_BYTES) throw new IOException("Dictionary bundle is too large");
             return bytes;
         }
     }

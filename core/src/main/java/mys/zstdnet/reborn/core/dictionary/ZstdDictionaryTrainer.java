@@ -13,11 +13,17 @@ import java.util.concurrent.TimeUnit;
 
 public final class ZstdDictionaryTrainer implements AutoCloseable {
     public static final Duration DEFAULT_DURATION = Duration.ofMinutes(10);
-    public static final int DICTIONARY_BYTES = 128 * 1024;
-    public static final int SAMPLE_BYTES = DICTIONARY_BYTES * 128;
+    public static final int UPLINK_DICTIONARY_BYTES = 64 * 1024;
+    public static final int DOWNLINK_DICTIONARY_BYTES = 128 * 1024;
+    /** Compatibility alias for the default (downlink) trainer. */
+    public static final int DICTIONARY_BYTES = DOWNLINK_DICTIONARY_BYTES;
+    public static final int SAMPLE_BYTES = 64 * 1024 * 1024;
+    public static final int MAX_SAMPLE_BYTES = 64 * 1024;
     private final Object lock = new Object();
     private final ZstdDictionaryStore store;
     private final ZstdNetLogger logger;
+    private final int dictionaryBytes;
+    private final boolean bundleMode;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(task -> {
         Thread thread = new Thread(task, "zstdnet-dictionary-training");
         thread.setDaemon(true);
@@ -29,8 +35,22 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
     private String result = "idle";
 
     public ZstdDictionaryTrainer(ZstdDictionaryStore store, ZstdNetLogger logger) {
+        this(store, logger, DOWNLINK_DICTIONARY_BYTES, true);
+    }
+
+    public ZstdDictionaryTrainer(ZstdDictionaryStore store, ZstdNetLogger logger, int dictionaryBytes) {
+        this(store, logger, dictionaryBytes, false);
+    }
+
+    public ZstdDictionaryTrainer(ZstdDictionaryStore store, ZstdNetLogger logger,
+                                 int dictionaryBytes, boolean bundleMode) {
         this.store = store;
         this.logger = logger;
+        if (dictionaryBytes < ZstdDictionary.MIN_BYTES || dictionaryBytes > DOWNLINK_DICTIONARY_BYTES) {
+            throw new IllegalArgumentException("dictionaryBytes out of range");
+        }
+        this.dictionaryBytes = dictionaryBytes;
+        this.bundleMode = bundleMode;
     }
 
     public boolean start(Duration duration, int compressionLevel) {
@@ -59,14 +79,23 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
     }
 
     public void capture(byte[] raw) {
+        capture(false, raw);
+    }
+
+    /** Captures a sample for server outbound (downlink) or inbound (uplink) training. */
+    public void capture(boolean uplink, byte[] raw) {
         if (raw == null || raw.length == 0) return;
         synchronized (lock) {
             if (closed || shuttingDown || session == null || session.finalizing) return;
-            int length = Math.min(raw.length, Math.min(4 * 1024, SAMPLE_BYTES - session.totalBytes));
+            List<byte[]> samples = uplink ? session.uplinkSamples : session.downlinkSamples;
+            int currentBytes = uplink ? session.uplinkBytes : session.downlinkBytes;
+            int length = Math.min(raw.length, Math.min(MAX_SAMPLE_BYTES, SAMPLE_BYTES - currentBytes));
             if (length <= 0) return;
-            session.samples.add(Arrays.copyOf(raw, length));
+            samples.add(Arrays.copyOf(raw, length));
+            if (uplink) session.uplinkBytes += length;
+            else session.downlinkBytes += length;
             session.totalBytes += length;
-            if (session.totalBytes >= SAMPLE_BYTES) stopAndFinalize();
+            if (session.totalBytes >= SAMPLE_BYTES * 2) stopAndFinalize();
         }
     }
 
@@ -74,7 +103,7 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
         synchronized (lock) {
             return session == null ? new Status(false, false, 0, 0, 0, result)
                 : new Status(true, session.finalizing, Math.max(0, session.endsAt - System.currentTimeMillis()),
-                    session.samples.size(), session.totalBytes, result);
+                    session.uplinkSamples.size() + session.downlinkSamples.size(), session.totalBytes, result);
         }
     }
 
@@ -107,7 +136,8 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
                 current.task.cancel(false);
                 current.finalizing = true;
                 logger.debug("Dictionary shutdown: collection stopped at " + current.totalBytes
-                    + "/" + SAMPLE_BYTES + " bytes, " + current.samples.size() + " samples");
+                    + "/" + (SAMPLE_BYTES * 2) + " bytes, "
+                    + (current.uplinkSamples.size() + current.downlinkSamples.size()) + " samples");
                 executor.execute(() -> train(current));
             }
             executor.shutdown();
@@ -138,23 +168,31 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
 
     private void train(Session expected) {
         try {
-            if (expected.samples.size() <= 10 || expected.totalBytes < 4096) {
+            if (expected.uplinkSamples.size() <= 10 || expected.downlinkSamples.size() <= 10
+                    || expected.uplinkBytes < 4096 || expected.downlinkBytes < 4096) {
                 throw new IllegalStateException("not enough traffic samples; connect players and try again");
             }
-            logger.debug("Dictionary training: " + expected.samples.size() + " samples, "
-                + expected.totalBytes + "/" + SAMPLE_BYTES + " bytes; target dictionary "
+            logger.debug("Dictionary training: uplink " + expected.uplinkSamples.size() + " samples/"
+                + expected.uplinkBytes + " bytes, downlink " + expected.downlinkSamples.size() + " samples/"
+                + expected.downlinkBytes + " bytes; target dictionaries "
                 + DICTIONARY_BYTES + " bytes");
-            byte[] buffer = new byte[DICTIONARY_BYTES];
-            long trained = Zstd.trainFromBuffer(expected.samples.toArray(byte[][]::new), buffer, false, expected.level);
-            if (Zstd.isError(trained) || trained <= 0 || trained > buffer.length) {
-                throw new IllegalStateException(Zstd.getErrorName(trained));
+            byte[] uplink;
+            byte[] downlink;
+            if (bundleMode) {
+                uplink = train(expected.uplinkSamples, UPLINK_DICTIONARY_BYTES, expected.level);
+                downlink = train(expected.downlinkSamples, DOWNLINK_DICTIONARY_BYTES, expected.level);
+            } else {
+                downlink = train(expected.downlinkSamples, dictionaryBytes, expected.level);
+                uplink = downlink;
             }
             synchronized (lock) {
                 // Native training cannot be interrupted safely. Cancel its publication on stop/import.
                 if (closed || session != expected) return;
-                logger.debug("Dictionary training complete; validating and saving " + trained
+                logger.debug("Dictionary training complete; validating and saving directional bundle"
                     + " bytes to " + store.dictionaryPath());
-                ZstdDictionary dictionary = store.save(Arrays.copyOf(buffer, (int) trained));
+                ZstdDictionary dictionary = bundleMode
+                    ? store.saveBundle(uplink, downlink)
+                    : store.save(uplink, dictionaryBytes);
                 result = "saved dictionary " + Long.toUnsignedString(dictionary.id());
                 session = null;
                 logger.debug(result + "; new connections will synchronize it");
@@ -169,12 +207,24 @@ public final class ZstdDictionaryTrainer implements AutoCloseable {
         }
     }
 
+    private static byte[] train(List<byte[]> samples, int capacity, int level) {
+        byte[] buffer = new byte[capacity];
+        long trained = Zstd.trainFromBuffer(samples.toArray(byte[][]::new), buffer, false, level);
+        if (Zstd.isError(trained) || trained <= 0 || trained > buffer.length) {
+            throw new IllegalStateException(Zstd.getErrorName(trained));
+        }
+        return Arrays.copyOf(buffer, (int) trained);
+    }
+
     public record Status(boolean training, boolean finalizing, long remainingMillis,
                          int sampleCount, int sampleBytes, String result) {}
     private static final class Session {
         final long endsAt;
         final int level;
-        final List<byte[]> samples = new ArrayList<>();
+        final List<byte[]> uplinkSamples = new ArrayList<>();
+        final List<byte[]> downlinkSamples = new ArrayList<>();
+        int uplinkBytes;
+        int downlinkBytes;
         int totalBytes;
         boolean finalizing;
         ScheduledFuture<?> task;

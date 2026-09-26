@@ -20,34 +20,32 @@ The build script places generated artifacts in `target/`. For 1.21.1, install th
 - Same-port protocol detection and injection.
 - Runtime compression-level control with automatic benchmarking.
 - NeoForge 1.21.1 dictionary training, import, selection, naming, unloading, synchronization, and client download feedback.
-- Convenient status and benchmark screens for NeoForge 1.21.1 players.
+- An F8 overlay selector for NeoForge 1.21.1 status views.
 
 ## NeoForge 1.21.1 commands
 
 Permission level 2 is required for management, benchmark start, compression-level, and dictionary mutation commands.
 
-`/zstdnet status`  
 `/zstdnet start`  
 `/zstdnet stop`  
 `/zstdnet reload`  
 `/zstdnet ping`  
+`/zstdnet debug`
 `/zstdnet complevel set <1-22>`  
 `/zstdnet benchmark start`  
-`/zstdnet benchmark info`  
-`/zstdnet dictionary status`  
-`/zstdnet dictionary list`  
+`/zstdnet benchmark interval <minutes>`
 `/zstdnet dictionary train [seconds]`  
 `/zstdnet dictionary stop`  
 `/zstdnet dictionary cancel`  
 `/zstdnet dictionary import <path>`  
-`/zstdnet dictionary switch [path]`  
+`/zstdnet dictionary switch <path>`
 `/zstdnet dictionary unload`  
 `/zstdnet dictionary export`  
 `/zstdnet dictionary name <pending-file> <name>`
 
-`benchmark start` starts a benchmark and opens its result screen when the result is ready. `benchmark info` opens the current benchmark state on demand.
+`ping` measures a direct request/response round trip. Players can use `debug` to write a diagnostic snapshot to `config/debug/zstdnet-debug-*.log`; the full data is not echoed in chat.
 
-Player `status`, `dictionary status`, and `dictionary list` commands open the corresponding status screens.
+`benchmark start` starts a benchmark. `benchmark interval <minutes>` changes and saves the automatic benchmark period (1-10080 minutes). Press F8 to choose the management, benchmark, or dictionary status overlay. Select the current item again to turn it off, or choose “Turn overlay off”.
 
 ## Dictionary files
 
@@ -63,7 +61,7 @@ config/zstdnet/dict/
 ```
  
 
-Training and import save dictionaries in this managed directory. `dictionary export` opens the selected dictionary's file path. New connections use the selected dictionary, while active connections keep the dictionary negotiated when they connected.
+Training and import save one compressed dictionary bundle containing separate 64 KiB uplink and 128 KiB downlink dictionaries. `dictionary export` opens the selected bundle's file path. New connections use the selected bundle, while active connections keep the dictionaries negotiated when they connected. The three player information overlays refresh once per second without blocking gameplay. Status upload/download is measured from the server perspective: upload is server-sent traffic and download is server-received traffic.
 
 ## Client configuration
 

@@ -5,7 +5,7 @@ import io.netty.buffer.ByteBuf;
 import java.io.IOException;
 
 public final class ZstdStreamHeader {
-    public static final int PROTOCOL_VERSION = 1;
+    public static final int PROTOCOL_VERSION = 2;
     public static final int BYTES = 1;
 
     private ZstdStreamHeader() {

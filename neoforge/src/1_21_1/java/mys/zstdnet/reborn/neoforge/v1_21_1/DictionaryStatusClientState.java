@@ -8,12 +8,6 @@ final class DictionaryStatusClientState {
 
     static void receive(DictionaryStatusPayload payload) {
         var client = Minecraft.getInstance();
-        client.execute(() -> {
-            if (client.screen instanceof DictionaryStatusScreen screen) {
-                screen.update(payload);
-            } else {
-                client.setScreen(new DictionaryStatusScreen(payload));
-            }
-        });
+        client.execute(() -> ZstdInfoOverlay.dictionary(payload));
     }
 }

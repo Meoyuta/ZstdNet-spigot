@@ -27,6 +27,8 @@ import java.util.WeakHashMap;
 
 final class ZstdCommands {
     private static final Map<ZstdNet, Set<String>> ANNOUNCED = new WeakHashMap<>();
+    private static final Map<java.util.UUID, java.util.function.LongConsumer> DEBUG_CALLBACKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
     private final ZstdNet mod;
 
     private ZstdCommands(ZstdNet mod) {
@@ -49,7 +51,6 @@ final class ZstdCommands {
 
     static void tick(MinecraftServer server, ZstdNet mod) {
         if (!server.isDedicatedServer() || server.getTickCount() % 20 != 0) return;
-        mod.tickBenchmark();
         try {
             for (String file : mod.dictionaryStore().expireNames(System.currentTimeMillis())) {
                 server.createCommandSourceStack().sendSuccess(() -> text("dictionary.auto_named", file), true);
@@ -73,8 +74,7 @@ final class ZstdCommands {
 
     static void register(RegisterCommandsEvent event, ZstdNet mod) {
         ZstdCommands handler = new ZstdCommands(mod);
-        var root = Commands.literal("zstdnet")
-                .executes(c -> handler.management(c.getSource(), "status"));
+        var root = Commands.literal("zstdnet");
         registerManagementCommands(root, handler);
         root.then(benchmarkCommand(handler));
         root.then(compressionLevelCommand(handler));
@@ -86,13 +86,13 @@ final class ZstdCommands {
             LiteralArgumentBuilder<CommandSourceStack> root,
             ZstdCommands handler
     ) {
-        root.then(Commands.literal("status")
-                .executes(context -> handler.management(context.getSource(), "status")));
         root.then(managementCommand("start", handler));
         root.then(managementCommand("stop", handler));
         root.then(managementCommand("reload", handler));
         root.then(Commands.literal("ping")
                 .executes(context -> handler.ping(context.getSource())));
+        root.then(Commands.literal("debug")
+                .executes(context -> handler.debug(context.getSource())));
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> managementCommand(
@@ -109,8 +109,11 @@ final class ZstdCommands {
         benchmark.then(Commands.literal("start")
                 .requires(source -> source.hasPermission(2))
             .executes(context -> handler.startBenchmark(context.getSource())));
-        benchmark.then(Commands.literal("info")
-            .executes(context -> handler.benchmarkInfo(context.getSource())));
+        benchmark.then(Commands.literal("interval")
+            .requires(source -> source.hasPermission(2))
+            .then(Commands.argument("minutes", IntegerArgumentType.integer(1, 10080))
+                .executes(context -> handler.setBenchmarkInterval(
+                    context.getSource(), IntegerArgumentType.getInteger(context, "minutes")))));
         return benchmark;
     }
 
@@ -127,13 +130,7 @@ final class ZstdCommands {
             ZstdCommands handler,
             ZstdNet mod
     ) {
-        var dictionary = Commands.literal("dictionary")
-                .executes(context -> handler.dictionary(context.getSource(), "status", ""));
-
-        dictionary.then(Commands.literal("status")
-                .executes(context -> handler.dictionary(context.getSource(), "status", "")));
-        dictionary.then(Commands.literal("list")
-                .executes(context -> handler.dictionary(context.getSource(), "list", "")));
+        var dictionary = Commands.literal("dictionary");
         dictionary.then(dictionaryAction("stop", handler));
         dictionary.then(dictionaryAction("cancel", handler));
         dictionary.then(dictionaryAction("export", handler));
@@ -184,8 +181,7 @@ final class ZstdCommands {
             ZstdNet mod
     ) {
         var changeDictionary = Commands.literal("switch")
-                .requires(source -> source.hasPermission(2))
-                .executes(context -> handler.dictionary(context.getSource(), "list", ""));
+                .requires(source -> source.hasPermission(2));
 
         changeDictionary.then(Commands.argument("path", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
@@ -233,20 +229,6 @@ final class ZstdCommands {
         return nameDictionary;
     }
 
-    private static Component trainingState(ZstdDictionaryTrainer.Status state) {
-        if (state.finalizing()) return text("dictionary.state.training");
-        if (state.training()) return text("dictionary.state.collecting");
-        var result = state.result();
-        if (result.startsWith("saved dictionary ")) {
-            return text("dictionary.state.saved", result.substring("saved dictionary ".length()));
-        }
-        if (result.startsWith("failed: ")) {
-            return text(result.contains("not enough traffic samples")
-                    ? "dictionary.state.insufficient_samples" : "dictionary.state.failed");
-        }
-        return text("dictionary.state." + ("cancelled".equals(result) ? "cancelled" : "idle"));
-    }
-
     private static Component text(String key, Object... arguments) {
         return Component.translatable("zstdnet.command." + key, arguments);
     }
@@ -268,11 +250,15 @@ final class ZstdCommands {
         return 1;
     }
 
-    private int benchmarkInfo(CommandSourceStack source) throws CommandSyntaxException {
-        if (!source.getServer().isDedicatedServer()) return fail(source, "benchmark.dedicated_only");
-        var player = source.getPlayerOrException();
-        mod.sendBenchmarkInfo(player);
-        return 1;
+    private int setBenchmarkInterval(CommandSourceStack source, int minutes) {
+        try {
+            mod.setBenchmarkInterval(minutes);
+            success(source, "benchmark.interval_set", minutes);
+            return 1;
+        } catch (IOException | IllegalStateException e) {
+            mod.commandFailed("set benchmark interval", e);
+            return fail(source, "benchmark.interval_failed");
+        }
     }
 
     private int setCompressionLevel(CommandSourceStack source, int level) {
@@ -288,8 +274,34 @@ final class ZstdCommands {
 
     private int ping(CommandSourceStack source) throws CommandSyntaxException {
         var player = source.getPlayerOrException();
-        success(source, "ping", player.connection.latency());
+        mod.measureDirectLatency(player, millis -> player.sendSystemMessage(
+                text("ping.direct", String.format(Locale.ROOT, "%.2f", millis))));
         return 1;
+    }
+
+    private int debug(CommandSourceStack source) throws CommandSyntaxException {
+        var player = source.getPlayerOrException();
+        try {
+            var report = mod.writeDebugReport(player);
+            source.sendSuccess(() -> text("debug.file", report.toString()), false);
+            return 1;
+        } catch (IOException error) {
+            mod.commandFailed("debug report", error);
+            source.sendFailure(text("debug.failed"));
+            return 0;
+        }
+    }
+
+    private static String formatBytes(long bytes) {
+        var units = new String[]{"B", "KiB", "MiB", "GiB", "TiB"};
+        var value = (double) bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.length - 1) {
+            value /= 1024;
+            unit++;
+        }
+        return unit == 0 ? "%d %s".formatted(bytes, units[unit])
+                : String.format(Locale.ROOT, "%.2f %s", value, units[unit]);
     }
 
     private int management(CommandSourceStack source, String action) {
@@ -311,7 +323,7 @@ final class ZstdCommands {
                     success(source, mod.dictionaryStore().dictionary() == null
                             ? "management.reloaded_without_dictionary" : "management.reloaded");
                 }
-                default -> showManagementStatus(source);
+                default -> fail(source, "management.failed");
             }
             return 1;
         } catch (Exception e) {
@@ -320,54 +332,12 @@ final class ZstdCommands {
         }
     }
 
-    private void showManagementStatus(CommandSourceStack source) {
-        if (source.getEntity() instanceof ServerPlayer player) {
-            mod.sendManagementStatus(player);
-            return;
-        }
-        var stats = mod.snapshot();
-        var state = mod.isRunning() ? "status.running" : "status.stopped";
-        success(source, "status.state", text(state), source.getServer().getPort());
-        success(source, "status.upload", formatBytes(stats.wireUpBytes()), formatBytes(stats.rawUpBytes()));
-        success(source, "status.download", formatBytes(stats.wireDownBytes()), formatBytes(stats.rawDownBytes()));
-        success(source, "status.ratio", String.format(Locale.ROOT, "%.2f", stats.ratioPercent()));
-        success(source, "status.connections", stats.connections());
-        success(source, "status.dictionary", dictionaryDescription(mod.dictionaryStore()));
-        success(source, "status.dictionary_connections",
-                mod.dictionaryConnections(), mod.selectedDictionaryConnections());
-        success(source, "status.dictionary_note");
-    }
-
-    private static String formatBytes(long bytes) {
-        var units = new String[]{"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
-        var value = (double) bytes;
-        var unit = 0;
-        while (value >= 1024 && unit < units.length - 1) {
-            value /= 1024;
-            unit++;
-        }
-        return unit == 0 ? "%d %s".formatted(bytes, units[unit])
-                : String.format(Locale.ROOT, "%.2f %s", value, units[unit]);
-    }
-
-    private static Component dictionaryDescription(ZstdDictionaryStore store) {
-        var selected = store.dictionary();
-        if (selected == null) return text("dictionary.none");
-        var path = store.selectedPath();
-        var fileName = path == null ? null : path.getFileName().toString();
-        var name = fileName == null ? text("dictionary.unknown_name")
-                : Component.literal(fileName.endsWith(".zdict")
-                        ? fileName.substring(0, fileName.length() - ".zdict".length()) : fileName);
-        return text("dictionary.description", name, Long.toUnsignedString(selected.id()), selected.size());
-    }
-
     private int dictionary(CommandSourceStack source, String action, String argument) {
         var store = mod.dictionaryStore();
         var trainer = mod.dictionaryTrainer();
         if (store == null || trainer == null) return fail(source, "dictionary.service_unavailable");
         try {
             return switch (action) {
-                case "list" -> listDictionaries(source, store);
                 case "unload" -> unloadDictionary(source, store, trainer);
                 case "switch" -> switchDictionary(source, argument, store, trainer);
                 case "train" -> trainDictionary(source, argument, trainer);
@@ -375,21 +345,12 @@ final class ZstdCommands {
                 case "cancel" -> cancelTraining(source, trainer);
                 case "import" -> importDictionary(source, argument, store, trainer);
                 case "export" -> exportDictionary(source, store);
-                default -> showDictionaryStatus(source, store, trainer);
+                default -> fail(source, "dictionary.failed");
             };
         } catch (Exception e) {
             mod.commandFailed("dictionary %s".formatted(action), e);
             return fail(source, "dictionary.failed");
         }
-    }
-
-    private int listDictionaries(CommandSourceStack source, ZstdDictionaryStore store) throws IOException {
-        if (source.getEntity() instanceof ServerPlayer player) {
-            mod.sendDictionaryStatus(player, "list");
-            return 1;
-        }
-        success(source, "dictionary.available", String.join(", ", store.available()));
-        return 1;
     }
 
     private int unloadDictionary(
@@ -413,8 +374,11 @@ final class ZstdCommands {
         if (path.isBlank()) return fail(source, "dictionary.invalid_path");
 
         trainer.abort();
+        mod.disconnectForDictionarySwitch();
         var selected = store.select(Path.of(path));
-        success(source, "dictionary.switched", store.selectedPath(), Long.toUnsignedString(selected.id()));
+        if (!(source.getEntity() instanceof ServerPlayer)) {
+            success(source, "dictionary.switched", store.selectedPath(), Long.toUnsignedString(selected.id()));
+        }
         return 1;
     }
 
@@ -480,27 +444,6 @@ final class ZstdCommands {
                 .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
                         text("dictionary.copy_path_hover", path)))
                 .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, path)));
-    }
-
-    private int showDictionaryStatus(
-            CommandSourceStack source,
-            ZstdDictionaryStore store,
-            ZstdDictionaryTrainer trainer
-    ) {
-        if (source.getEntity() instanceof ServerPlayer player) {
-            mod.sendDictionaryStatus(player, "status");
-            return 1;
-        }
-        var state = trainer.status();
-        success(source, "dictionary.status", dictionaryDescription(store), trainingState(state),
-                state.sampleCount(), state.sampleBytes(), state.remainingMillis() / 1000);
-        success(source, "dictionary.selected_path", selectedDictionaryPath(store));
-        return 1;
-    }
-
-    private Component selectedDictionaryPath(ZstdDictionaryStore store) {
-        var path = store.selectedPath();
-        return path == null ? text("dictionary.none") : Component.literal(path.toString());
     }
 
     private static String unquotePath(String path) {

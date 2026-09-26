@@ -114,7 +114,7 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
             ctx.channel().closeFuture().addListener(future -> {
                 if (dictionaryActive.compareAndSet(true, false)) stats.addDictionaryConnection(offered.id(), -1);
             });
-            var session = ZstdDictionarySession.server(offered,
+            var session = ZstdDictionarySession.server(offered, dictionaryStore.uplinkDictionary(),
                 new mys.zstdnet.reborn.core.netty.ZstdDictionaryDownloadListener() {
                     public void started(long id, int bytes) {
                         logger.info("Sending dictionary id=" + Long.toUnsignedString(id)
@@ -169,25 +169,27 @@ final class SamePortZstdHandler extends ByteToMessageDecoder {
         return new ZstdFrameStats() {
             @Override
             public void inbound(long rawBytes, long wireBytes) {
-                stats.addRawUp(rawBytes);
-                stats.addWireUp(wireBytes);
-            }
-
-            @Override
-            public void outbound(long rawBytes, long wireBytes) {
+                // Server perspective: inbound is data received from the client (download).
                 stats.addRawDown(rawBytes);
                 stats.addWireDown(wireBytes);
             }
 
             @Override
+            public void outbound(long rawBytes, long wireBytes) {
+                // Server perspective: outbound is data sent to the client (upload).
+                stats.addRawUp(rawBytes);
+                stats.addWireUp(wireBytes);
+            }
+
+            @Override
             public void inboundSample(byte[] raw) {
-                dictionaryTrainer.capture(raw);
+                dictionaryTrainer.capture(true, raw);
                 benchmark.capture(raw);
             }
 
             @Override
             public void outboundSample(byte[] raw) {
-                dictionaryTrainer.capture(raw);
+                dictionaryTrainer.capture(false, raw);
                 benchmark.capture(raw);
             }
         };

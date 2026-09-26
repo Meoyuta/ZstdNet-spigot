@@ -5,6 +5,7 @@ import mys.zstdnet.reborn.core.protocol.VarIntCodec;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.handler.codec.MessageToByteEncoder;
+import mys.zstdnet.reborn.core.protocol.ZstdPersistentStreamCodec;
 import java.util.function.IntSupplier;
 
 public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
@@ -14,6 +15,10 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
     private final ZstdDictionarySession dictionarySession;
     private boolean magicSent;
     private boolean streamHeaderSent;
+    private ZstdPersistentStreamCodec persistentStream;
+    private long persistentDictionaryId = Long.MIN_VALUE;
+    private int persistentLevel = Integer.MIN_VALUE;
+    private boolean ownsPersistentStream = true;
 
     public ZstdNettyEncoder(int level, boolean sendMagic, ZstdFrameStats stats) {
         this(() -> level, sendMagic, stats, null);
@@ -35,6 +40,10 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
         var copy = new ZstdNettyEncoder(level, sendMagic, stats, dictionarySession);
         copy.magicSent = magicSent;
         copy.streamHeaderSent = streamHeaderSent;
+        copy.persistentStream = persistentStream;
+        copy.persistentDictionaryId = persistentDictionaryId;
+        copy.persistentLevel = persistentLevel;
+        ownsPersistentStream = false;
         return copy;
     }
 
@@ -71,12 +80,48 @@ public final class ZstdNettyEncoder extends MessageToByteEncoder<ByteBuf> {
         var raw = ByteBufUtil.getBytes(msg, msg.readerIndex(), readable, false);
         mys.zstdnet.reborn.core.dictionary.ZstdDictionary dictionary = dictionarySession == null
             ? null
-            : dictionarySession.activeDictionary();
-        var frame = ZstdFrameCodec.compressFrame(raw, level.getAsInt(), dictionary);
+            : dictionarySession.activeOutboundDictionary();
+        byte[] frame;
+        if (dictionarySession == null) {
+            frame = ZstdFrameCodec.compressFrame(raw, level.getAsInt(), dictionary);
+        } else {
+            var dictionaryId = dictionary == null ? 0L : dictionary.id();
+            var currentLevel = Math.clamp(level.getAsInt(), 1, 22);
+            if (persistentStream == null || persistentDictionaryId != dictionaryId || persistentLevel != currentLevel) {
+                if (persistentStream != null && persistentDictionaryId == dictionaryId && persistentLevel != currentLevel) {
+                    var reset = controlRecord(ZstdDictionarySession.streamResetControl());
+                    out.writeBytes(reset);
+                    wireBytes += reset.length;
+                }
+                if (persistentStream != null) persistentStream.close();
+                persistentStream = new ZstdPersistentStreamCodec(currentLevel, dictionary);
+                persistentDictionaryId = dictionaryId;
+                persistentLevel = currentLevel;
+            }
+            var payload = persistentStream.compress(raw);
+            var outFrame = new java.io.ByteArrayOutputStream(payload.length + 12);
+            outFrame.write(VarIntCodec.encode(raw.length));
+            outFrame.write(VarIntCodec.encode(payload.length << 1 | (dictionary == null ? 0 : 1)));
+            outFrame.write(payload);
+            frame = outFrame.toByteArray();
+        }
         wireBytes += frame.length;
         out.writeBytes(frame);
         stats.outbound(raw.length, wireBytes);
         stats.outboundSample(raw);
+    }
+
+    @Override
+    public void handlerRemoved(io.netty.channel.ChannelHandlerContext ctx) throws Exception {
+        closePersistentStream();
+        super.handlerRemoved(ctx);
+    }
+
+    private void closePersistentStream() throws java.io.IOException {
+        if (ownsPersistentStream && persistentStream != null) {
+            persistentStream.close();
+            persistentStream = null;
+        }
     }
 
     private static byte[] controlRecord(byte[] control) throws java.io.IOException {

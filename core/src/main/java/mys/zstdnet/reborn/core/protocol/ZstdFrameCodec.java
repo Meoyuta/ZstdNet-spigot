@@ -19,14 +19,31 @@ public final class ZstdFrameCodec {
     }
 
     public static byte[] compressFrame(byte[] raw, int level, ZstdDictionary dictionary) throws IOException {
-        var compressed = Zstd.compress(raw, level);
+        return compressFrame(raw, level, dictionary, true);
+    }
+
+    /** Compresses a frame while optionally leaving dictionary adaptation untouched. */
+    public static byte[] compressFrame(byte[] raw, int level, ZstdDictionary dictionary,
+                                       boolean recordAdaptiveOutcome) throws IOException {
+        if (raw.length < 32) {
+            var out = new ByteArrayOutputStream(raw.length + 10);
+            out.write(VarIntCodec.encode(raw.length));
+            out.write(VarIntCodec.encode(0));
+            out.write(raw);
+            return out.toByteArray();
+        }
+        var compareWithoutDictionary = dictionary == null
+                || !dictionary.shouldPreferDictionary()
+                || dictionary.shouldSampleUncompressed();
+        var compressed = compareWithoutDictionary ? Zstd.compress(raw, level) : null;
         var usesDictionary = false;
         if (dictionary != null) {
             var candidate = dictionary.compress(raw, level);
-            if (candidate.length < compressed.length) {
+            if (compressed == null || candidate.length < compressed.length) {
                 compressed = candidate;
                 usesDictionary = true;
             }
+            if (compareWithoutDictionary && recordAdaptiveOutcome) dictionary.recordCompressionOutcome(usesDictionary);
         }
         var storedTag = (compressed.length << 1) | (usesDictionary ? 1 : 0);
         var storeRaw = compressed.length + VarIntCodec.encode(storedTag).length >= raw.length + 1;

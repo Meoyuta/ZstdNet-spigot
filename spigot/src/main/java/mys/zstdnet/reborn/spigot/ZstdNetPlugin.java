@@ -23,8 +23,9 @@ public final class ZstdNetPlugin extends JavaPlugin {
             getDataFolder().toPath().resolve("dict").resolve("dictionary.zdict"),
             new BukkitLogger(getLogger())
         );
-        dictionaryStore.load();
-        dictionaryTrainer = new ZstdDictionaryTrainer(dictionaryStore, new BukkitLogger(getLogger()));
+        dictionaryStore.loadSelected();
+        dictionaryTrainer = new ZstdDictionaryTrainer(dictionaryStore, new BukkitLogger(getLogger()),
+            ZstdDictionaryTrainer.DOWNLINK_DICTIONARY_BYTES, true);
 
         var command = getCommand("zstdnet");
         if (command != null) {
